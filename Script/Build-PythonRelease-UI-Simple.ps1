@@ -337,114 +337,202 @@ function Get-HtmlUI {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: url('/assets/background.png') center center / cover no-repeat fixed, linear-gradient(135deg, rgba(30, 60, 100, 0.85) 0%, rgba(20, 40, 70, 0.85) 100%);
             min-height: 100vh;
             padding: 20px;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 25, 45, 0.4);
+            z-index: 0;
+            pointer-events: none;
         }
         .container {
             max-width: 800px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: transparent;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
             overflow: hidden;
+            position: relative;
+            z-index: 1;
         }
         .header {
-            background: linear-gradient(135deg, #3776ab 0%, #4a90c2 100%);
+            background: rgba(15, 25, 45, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             color: white;
-            padding: 30px;
+            padding: 40px 30px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
-        .content { padding: 30px; }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
+            pointer-events: none;
+        }
+        .header h1 { 
+            font-size: 2.8em; 
+            margin-bottom: 10px; 
+            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            position: relative;
+            z-index: 1;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #ffffff, #e0e0e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header p {
+            position: relative;
+            z-index: 1;
+            opacity: 0.8;
+            font-size: 0.9em;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #a0c0e0;
+        }
+        .content { 
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
         .section { margin-bottom: 30px; }
         .section h2 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.5em;
-            border-bottom: 2px solid #3776ab;
+            color: #1a3c5e;
+            margin-bottom: 25px;
+            font-size: 1.4em;
+            border-bottom: 2px solid transparent;
+            border-image: linear-gradient(to right, #3776ab, rgba(55, 118, 171, 0)) 1;
             padding-bottom: 10px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
         }
-        .form-group { margin-bottom: 20px; }
+        .section h2::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 24px;
+            background: #3776ab;
+            margin-right: 12px;
+            border-radius: 2px;
+        }
+        .form-group { margin-bottom: 24px; }
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            color: #555;
-            font-weight: 500;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.9em;
+            letter-spacing: 0.3px;
         }
         .form-row {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             align-items: flex-end;
         }
         .form-row input { flex: 1; }
         input[type="text"] {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            padding: 14px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
             font-size: 14px;
+            background: #f8fafc;
+            color: #2d3748;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
         }
         input[type="text"]:focus {
             outline: none;
             border-color: #3776ab;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(55, 118, 171, 0.15), inset 0 1px 2px rgba(0,0,0,0.05);
         }
         .btn {
-            padding: 12px 24px;
+            padding: 14px 28px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.3px;
         }
         .btn-primary {
-            background: linear-gradient(135deg, #3776ab 0%, #4a90c2 100%);
+            background: linear-gradient(135deg, #3776ab 0%, #2b5d88 100%);
             color: white;
+            box-shadow: 0 4px 6px rgba(55, 118, 171, 0.2);
         }
         .btn-primary:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(55, 118, 171, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 15px rgba(55, 118, 171, 0.3);
         }
         .btn-secondary {
-            background: #6c757d;
-            color: white;
+            background: transparent;
+            color: #3776ab;
+            border: 1px solid #b3cce6;
         }
-        .btn-secondary:hover { background: #5a6268; }
+        .btn-secondary:hover { 
+            background: #f0f7fc;
+            border-color: #3776ab;
+            color: #2b5d88;
+        }
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
         }
         .alert {
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin-bottom: 20px;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
         .alert-success {
-            background: #d4edda;
+            background: rgba(212, 237, 218, 0.9);
             color: #155724;
-            border: 1px solid #c3e6cb;
+            border: 1px solid rgba(195, 230, 203, 0.8);
         }
         .alert-error {
-            background: #f8d7da;
+            background: rgba(248, 215, 218, 0.9);
             color: #721c24;
-            border: 1px solid #f5c6cb;
+            border: 1px solid rgba(245, 198, 203, 0.8);
         }
         .alert-info {
-            background: #d1ecf1;
+            background: rgba(209, 236, 241, 0.9);
             color: #0c5460;
-            border: 1px solid #bee5eb;
+            border: 1px solid rgba(190, 229, 235, 0.8);
         }
         .hidden { display: none; }
         .note {
-            background: #fff3cd;
-            border: 1px solid #ffeeba;
-            border-radius: 6px;
-            padding: 15px;
-            margin-bottom: 20px;
-            color: #856404;
+            background: rgba(235, 245, 255, 0.8);
+            border-left: 4px solid #3776ab;
+            border-radius: 4px;
+            padding: 16px 20px;
+            margin-bottom: 30px;
+            color: #2c5282;
+            font-size: 0.95em;
+            line-height: 1.5;
         }
-        .note strong { display: block; margin-bottom: 5px; }
+        .note strong { color: #1a3c5e; margin-bottom: 4px; }
     </style>
 </head>
 <body>
@@ -674,11 +762,38 @@ function Start-WebServer {
                             Send-JsonResponse -Context $context -Data @{
                                 Python = if ($python.Count -gt 0) { $python[0].Path } else { $null }
                             }
-                } elseif ($path -eq "/api/setup-venv") {
-                    Invoke-SetupVenvHandler -Context $context
-                } elseif ($path -eq "/api/build") {
-                    Invoke-BuildHandler -Context $context
-                } else {
+                        } elseif ($path -eq "/api/setup-venv") {
+                            Invoke-SetupVenvHandler -Context $context
+                        } elseif ($path -eq "/api/build") {
+                            Invoke-BuildHandler -Context $context
+                        } elseif ($path.StartsWith("/assets/")) {
+                            # Serve static files from assets folder
+                            $assetsPath = Join-Path $PSScriptRoot "..\assets"
+                            $fileName = $path.Substring("/assets/".Length)
+                            $filePath = Join-Path $assetsPath $fileName
+                            
+                            if (Test-Path $filePath -PathType Leaf) {
+                                $content = [System.IO.File]::ReadAllBytes($filePath)
+                                $extension = [System.IO.Path]::GetExtension($filePath).ToLower()
+                                $contentType = switch ($extension) {
+                                    ".png" { "image/png" }
+                                    ".jpg" { "image/jpeg" }
+                                    ".jpeg" { "image/jpeg" }
+                                    ".gif" { "image/gif" }
+                                    ".svg" { "image/svg+xml" }
+                                    default { "application/octet-stream" }
+                                }
+                                
+                                $response = $context.Response
+                                $response.StatusCode = 200
+                                $response.ContentType = $contentType
+                                $response.ContentLength64 = $content.Length
+                                $response.OutputStream.Write($content, 0, $content.Length)
+                                $response.OutputStream.Close()
+                            } else {
+                                Send-TextResponse -Context $context -Text "File not found" -StatusCode 404
+                            }
+                        } else {
                             Send-TextResponse -Context $context -Text "Not Found" -StatusCode 404
                         }
                     } catch {
