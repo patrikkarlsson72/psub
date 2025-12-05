@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 
 # Global state
 $script:ServerListener = $null
+$script:BuildStatus = @{}  # Track build status by ID
 
 function Write-Info($msg) {
     Write-Host "[INFO] $msg" -ForegroundColor Cyan
@@ -275,7 +276,16 @@ function Invoke-BuildHandler {
     
     # Create a simple batch file that opens a new window and runs the build
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $buildId = [guid]::NewGuid().ToString()
     $batchFile = Join-Path $env:TEMP "python-build-$timestamp.bat"
+    $statusFile = Join-Path $env:TEMP "python-build-status-$buildId.txt"
+    
+    # Store build status
+    $script:BuildStatus[$buildId] = @{
+        Status = "running"
+        StartTime = Get-Date
+        StatusFile = $statusFile
+    }
     
     $batchContent = @"
 @echo off
@@ -290,6 +300,7 @@ call "$vcvarsPath"
 if errorlevel 1 (
     echo.
     echo ERROR: Failed to set up Visual Studio environment
+    echo failed > "$statusFile"
     pause
     exit /b 1
 )
@@ -304,10 +315,12 @@ if errorlevel 1 (
     echo ========================================
     echo BUILD FAILED
     echo ========================================
+    echo failed > "$statusFile"
 ) else (
     echo ========================================
     echo BUILD SUCCEEDED
     echo ========================================
+    echo success > "$statusFile"
 )
 echo.
 echo Press any key to close this window...
@@ -322,6 +335,42 @@ pause >nul
     Send-JsonResponse -Context $Context -Data @{ 
         Success = $true
         Message = "Build started in new window"
+        BuildId = $buildId
+    }
+}
+
+function Invoke-BuildStatusHandler {
+    param(
+        [System.Net.HttpListenerContext]$Context,
+        [string]$BuildId
+    )
+    
+    if (-not $script:BuildStatus.ContainsKey($BuildId)) {
+        Send-JsonResponse -Context $Context -Data @{ 
+            Status = "unknown"
+            Message = "Build ID not found"
+        } -StatusCode 404
+        return
+    }
+    
+    $buildInfo = $script:BuildStatus[$BuildId]
+    $statusFile = $buildInfo.StatusFile
+    
+    if (Test-Path $statusFile) {
+        $status = Get-Content $statusFile -Raw
+        $status = $status.Trim()
+        
+        $script:BuildStatus[$BuildId].Status = $status
+        
+        Send-JsonResponse -Context $Context -Data @{
+            Status = $status
+            Message = if ($status -eq "success") { "Build completed successfully" } else { "Build failed" }
+        }
+    } else {
+        Send-JsonResponse -Context $Context -Data @{
+            Status = "running"
+            Message = "Build is still running"
+        }
     }
 }
 
@@ -665,6 +714,53 @@ function Get-HtmlUI {
             }
         }
         
+        let currentBuildId = null;
+        let buildStatusInterval = null;
+        
+        async function checkBuildStatus(buildId) {
+            try {
+                const response = await fetch('/api/build-status/' + buildId);
+                const data = await response.json();
+                
+                const btn = document.getElementById('startBuildBtn');
+                
+                if (data.Status === 'running') {
+                    btn.textContent = 'Building...';
+                    btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                } else if (data.Status === 'success') {
+                    btn.textContent = 'Build Finished Successfully!';
+                    btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                    btn.disabled = false;
+                    showAlert('Build completed successfully!', 'success');
+                    clearInterval(buildStatusInterval);
+                    buildStatusInterval = null;
+                    currentBuildId = null;
+                    
+                    // Reset button after 5 seconds
+                    setTimeout(() => {
+                        btn.textContent = 'Start Build (Opens New Window)';
+                        btn.style.background = '';
+                    }, 5000);
+                } else if (data.Status === 'failed') {
+                    btn.textContent = 'Build Failed';
+                    btn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                    btn.disabled = false;
+                    showAlert('Build failed. Check terminal window for details.', 'error');
+                    clearInterval(buildStatusInterval);
+                    buildStatusInterval = null;
+                    currentBuildId = null;
+                    
+                    // Reset button after 5 seconds
+                    setTimeout(() => {
+                        btn.textContent = 'Start Build (Opens New Window)';
+                        btn.style.background = '';
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error('Error checking build status:', error);
+            }
+        }
+        
         async function startBuild() {
             const sourcePath = document.getElementById('sourcePath').value;
             const bootstrapPython = document.getElementById('bootstrapPython').value;
@@ -697,14 +793,26 @@ function Get-HtmlUI {
                 
                 if (data.Success) {
                     showAlert('Build started! Check the new terminal window for progress.', 'success');
+                    currentBuildId = data.BuildId;
+                    btn.textContent = 'Building...';
+                    btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                    
+                    // Poll build status every 2 seconds
+                    if (buildStatusInterval) {
+                        clearInterval(buildStatusInterval);
+                    }
+                    buildStatusInterval = setInterval(() => checkBuildStatus(currentBuildId), 2000);
                 } else {
                     showAlert('Failed to start build: ' + data.Error, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Start Build (Opens New Window)';
+                    btn.style.background = '';
                 }
             } catch (error) {
                 showAlert('Error starting build: ' + error.message, 'error');
-            } finally {
                 btn.disabled = false;
                 btn.textContent = 'Start Build (Opens New Window)';
+                btn.style.background = '';
             }
         }
         
@@ -766,6 +874,9 @@ function Start-WebServer {
                             Invoke-SetupVenvHandler -Context $context
                         } elseif ($path -eq "/api/build") {
                             Invoke-BuildHandler -Context $context
+                        } elseif ($path -match "^/api/build-status/(.+)$") {
+                            $buildId = $matches[1]
+                            Invoke-BuildStatusHandler -Context $context -BuildId $buildId
                         } elseif ($path.StartsWith("/assets/")) {
                             # Serve static files from assets folder
                             $assetsPath = Join-Path $PSScriptRoot "..\assets"
