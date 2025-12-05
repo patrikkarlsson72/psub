@@ -381,7 +381,7 @@ function Get-HtmlUI {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Build</title>
+    <title>PSUB - Python Security Update Builder</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -421,7 +421,10 @@ function Get-HtmlUI {
             text-align: center;
             position: relative;
             overflow: hidden;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(55, 118, 171, 0.5);
+            border-bottom: 1px solid rgba(55, 118, 171, 0.3);
+            box-shadow: 0 0 20px rgba(55, 118, 171, 0.2);
+            border-radius: 16px 16px 0 0;
         }
         .header::before {
             content: '';
@@ -587,8 +590,8 @@ function Get-HtmlUI {
 <body>
     <div class="container">
         <div class="header">
-            <h1>Python Build</h1>
-            <p>Simple UI for building Python releases</p>
+            <h1>PSUB</h1>
+            <p>Python Security Update Builder</p>
         </div>
         
         <div class="content">
@@ -699,6 +702,8 @@ function Get-HtmlUI {
                         : 'Venv Created: ';
                     btn.textContent = statusText + venvName;
                     btn.style.background = '#28a745';
+                    btn.style.color = 'white';
+                    btn.style.borderColor = '#28a745';
                     btn.style.cursor = 'default';
                 } else {
                     showAlert('Failed to setup venv: ' + data.Error, 'error');
@@ -936,7 +941,7 @@ function Start-WebServer {
     }
 }
 
-Write-Info "Python Build - Simple UI"
+Write-Info "PSUB - Python Security Update Builder"
 Write-Info "========================"
 
 if (-not (Test-Path $BuildScriptPath)) {
