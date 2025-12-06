@@ -896,15 +896,19 @@ function Start-WebServer {
                                     Write-Host "Path traversal attempt blocked: $fileName" -ForegroundColor Red
                                     Send-TextResponse -Context $context -Text "Access denied" -StatusCode 403
                                 } else {
-                                    $filePath = Join-Path $assetsPath $fileName
+                                    $filePath = Join-Path $assetsPath.Path $fileName
                                     $resolvedFilePath = Resolve-Path $filePath -ErrorAction SilentlyContinue
                                     
                                     # Verify the resolved path is still within the assets directory
-                                    if ($resolvedFilePath -and $resolvedFilePath.Path.StartsWith($assetsPath.Path, [StringComparison]::OrdinalIgnoreCase)) {
+                                    # Ensure proper directory boundary checking by normalizing paths with trailing separator
+                                    $normalizedAssetsPath = $assetsPath.Path.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+                                    $normalizedResolvedPath = $resolvedFilePath.Path.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+                                    
+                                    if ($resolvedFilePath -and $normalizedResolvedPath.StartsWith($normalizedAssetsPath, [StringComparison]::OrdinalIgnoreCase)) {
                                         if (Test-Path $resolvedFilePath -PathType Leaf) {
                                             try {
-                                                $content = [System.IO.File]::ReadAllBytes($resolvedFilePath)
-                                                $extension = [System.IO.Path]::GetExtension($resolvedFilePath).ToLower()
+                                                $content = [System.IO.File]::ReadAllBytes($resolvedFilePath.Path)
+                                                $extension = [System.IO.Path]::GetExtension($resolvedFilePath.Path).ToLower()
                                                 $contentType = switch ($extension) {
                                                     ".png" { "image/png" }
                                                     ".jpg" { "image/jpeg" }
