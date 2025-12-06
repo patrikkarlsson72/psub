@@ -10,7 +10,6 @@ PSUB simplifies the process of building custom Python security releases from sou
 
 - **Build-PythonRelease.ps1** - Core build automation script
 - **Build-PythonRelease-UI-Simple.ps1** - Web-based UI for easier build management
-- **Build-PythonRelease-UI.ps1** - Advanced UI with additional features
 - **Documentation** - Step-by-step guides for building Python releases
 
 ## 🚀 Quick Start
@@ -70,4 +69,6 @@ Contributions welcome! Please feel free to submit issues or pull requests.
 ## 🙏 Acknowledgments
 
 Built to simplify Python security release deployment in enterprise environments.
+
+
 
