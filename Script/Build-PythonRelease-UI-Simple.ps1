@@ -884,30 +884,54 @@ function Start-WebServer {
                             Invoke-BuildStatusHandler -Context $context -BuildId $buildId
                         } elseif ($path.StartsWith("/assets/")) {
                             # Serve static files from assets folder
-                            $assetsPath = Join-Path $PSScriptRoot "..\assets"
-                            $fileName = $path.Substring("/assets/".Length)
-                            $filePath = Join-Path $assetsPath $fileName
+                            $assetsPath = Resolve-Path (Join-Path $PSScriptRoot "..\assets") -ErrorAction SilentlyContinue
                             
-                            if (Test-Path $filePath -PathType Leaf) {
-                                $content = [System.IO.File]::ReadAllBytes($filePath)
-                                $extension = [System.IO.Path]::GetExtension($filePath).ToLower()
-                                $contentType = switch ($extension) {
-                                    ".png" { "image/png" }
-                                    ".jpg" { "image/jpeg" }
-                                    ".jpeg" { "image/jpeg" }
-                                    ".gif" { "image/gif" }
-                                    ".svg" { "image/svg+xml" }
-                                    default { "application/octet-stream" }
-                                }
-                                
-                                $response = $context.Response
-                                $response.StatusCode = 200
-                                $response.ContentType = $contentType
-                                $response.ContentLength64 = $content.Length
-                                $response.OutputStream.Write($content, 0, $content.Length)
-                                $response.OutputStream.Close()
+                            if (-not $assetsPath) {
+                                Send-TextResponse -Context $context -Text "Assets folder not found" -StatusCode 404
                             } else {
-                                Send-TextResponse -Context $context -Text "File not found" -StatusCode 404
+                                $fileName = $path.Substring("/assets/".Length)
+                                
+                                # Prevent path traversal attacks - reject any path with .. or absolute paths
+                                if ($fileName -match '\.\.' -or [System.IO.Path]::IsPathRooted($fileName)) {
+                                    Write-Host "Path traversal attempt blocked: $fileName" -ForegroundColor Red
+                                    Send-TextResponse -Context $context -Text "Access denied" -StatusCode 403
+                                } else {
+                                    $filePath = Join-Path $assetsPath $fileName
+                                    $resolvedFilePath = Resolve-Path $filePath -ErrorAction SilentlyContinue
+                                    
+                                    # Verify the resolved path is still within the assets directory
+                                    if ($resolvedFilePath -and $resolvedFilePath.Path.StartsWith($assetsPath.Path, [StringComparison]::OrdinalIgnoreCase)) {
+                                        if (Test-Path $resolvedFilePath -PathType Leaf) {
+                                            try {
+                                                $content = [System.IO.File]::ReadAllBytes($resolvedFilePath)
+                                                $extension = [System.IO.Path]::GetExtension($resolvedFilePath).ToLower()
+                                                $contentType = switch ($extension) {
+                                                    ".png" { "image/png" }
+                                                    ".jpg" { "image/jpeg" }
+                                                    ".jpeg" { "image/jpeg" }
+                                                    ".gif" { "image/gif" }
+                                                    ".svg" { "image/svg+xml" }
+                                                    default { "application/octet-stream" }
+                                                }
+                                                
+                                                $response = $context.Response
+                                                $response.StatusCode = 200
+                                                $response.ContentType = $contentType
+                                                $response.ContentLength64 = $content.Length
+                                                $response.OutputStream.Write($content, 0, $content.Length)
+                                                $response.OutputStream.Close()
+                                            } catch {
+                                                Write-Host "Error reading file: $_" -ForegroundColor Red
+                                                Send-TextResponse -Context $context -Text "Error reading file" -StatusCode 500
+                                            }
+                                        } else {
+                                            Send-TextResponse -Context $context -Text "File not found" -StatusCode 404
+                                        }
+                                    } else {
+                                        Write-Host "Path traversal attempt blocked: $fileName" -ForegroundColor Red
+                                        Send-TextResponse -Context $context -Text "Access denied" -StatusCode 403
+                                    }
+                                }
                             }
                         } else {
                             Send-TextResponse -Context $context -Text "Not Found" -StatusCode 404
