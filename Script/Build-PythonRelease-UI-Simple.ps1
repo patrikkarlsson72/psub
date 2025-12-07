@@ -327,7 +327,108 @@ function Invoke-DocumentationHandler {
     
     if (Test-Path $resolvedPath -PathType Leaf) {
         $content = Get-Content $resolvedPath -Raw
-        Send-TextResponse -Context $Context -Text $content -ContentType "text/markdown"
+        
+        # Escape the content for HTML (for use in textarea)
+        $htmlEscapedContent = $content -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+        
+        # Wrap in HTML page with Markdown renderer
+        # Use a hidden textarea to store the markdown content safely
+        $html = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$DocName - Documentation</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        #content {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+        h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 10px; }
+        h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 8px; }
+        h3 { font-size: 1.25em; }
+        p { margin-bottom: 16px; }
+        ul, ol { margin-bottom: 16px; padding-left: 30px; }
+        li { margin-bottom: 8px; }
+        code {
+            background-color: #f6f8fa;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        blockquote {
+            border-left: 4px solid #dfe2e5;
+            padding-left: 16px;
+            color: #6a737d;
+            margin-bottom: 16px;
+        }
+        a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        table {
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #dfe2e5;
+            padding: 6px 13px;
+        }
+        th {
+            background-color: #f6f8fa;
+            font-weight: 600;
+        }
+        strong { font-weight: 600; }
+        em { font-style: italic; }
+    </style>
+</head>
+<body>
+    <div id="content"></div>
+    <textarea id="markdown-source" style="display:none;">$htmlEscapedContent</textarea>
+    <script>
+        const markdown = document.getElementById('markdown-source').value;
+        const html = marked.parse(markdown);
+        document.getElementById('content').innerHTML = html;
+    </script>
+</body>
+</html>
+"@
+        Send-TextResponse -Context $Context -Text $html -ContentType "text/html"
     } else {
         Send-TextResponse -Context $Context -Text "Documentation not found" -StatusCode 404
     }
