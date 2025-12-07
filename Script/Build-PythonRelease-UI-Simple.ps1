@@ -138,6 +138,201 @@ function Find-BootstrapPython {
     return $found | Sort-Object { $_.Minor } -Descending
 }
 
+function Test-VisualStudio2019 {
+    $vsPaths = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"
+    )
+    
+    foreach ($path in $vsPaths) {
+        if (Test-Path $path) {
+            return @{
+                Installed = $true
+                Path = $path
+            }
+        }
+    }
+    
+    return @{
+        Installed = $false
+        Path = $null
+    }
+}
+
+function Test-MSVCToolchains {
+    $required = @("x64", "x86", "ARM64")
+    $found = @()
+    $missing = @()
+    
+    # Check each VS edition separately (same approach as Test-VisualStudio2019)
+    $vsPaths = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"
+    )
+    
+    $toolchainDirs = @()
+    foreach ($vsPath in $vsPaths) {
+        if (Test-Path $vsPath) {
+            $vcToolsPath = Join-Path $vsPath "VC\Tools\MSVC"
+            if (Test-Path $vcToolsPath) {
+                $dirs = Get-ChildItem -Path $vcToolsPath -ErrorAction SilentlyContinue -Directory | Where-Object { 
+                    # Match version patterns like 14.29, 14.29.30133, etc.
+                    $_.Name -match '^\d+\.\d+' 
+                }
+                if ($dirs) {
+                    $toolchainDirs += $dirs
+                }
+            }
+        }
+    }
+    
+    if ($toolchainDirs) {
+        $latestToolchain = $toolchainDirs | Sort-Object { 
+            try {
+                [version]$_.Name
+            } catch {
+                [version]"0.0"
+            }
+        } -Descending | Select-Object -First 1
+        
+        $binPath = Join-Path $latestToolchain.FullName "bin\Hostx64"
+        
+        foreach ($arch in $required) {
+            $archPath = Join-Path $binPath "x64"
+            if ($arch -eq "x86") { $archPath = Join-Path $binPath "x86" }
+            if ($arch -eq "ARM64") { $archPath = Join-Path $binPath "arm64" }
+            
+            $clPath = Join-Path $archPath "cl.exe"
+            if (Test-Path $clPath) {
+                $found += $arch
+            } else {
+                $missing += $arch
+            }
+        }
+    } else {
+        # No toolchain directories found - all toolchains are missing
+        $missing = $required
+    }
+    
+    return @{
+        Found = $found
+        Missing = $missing
+        AllPresent = ($missing.Count -eq 0)
+    }
+}
+
+function Test-WindowsSDK {
+    $requiredVersion = "10.0.19041.0"
+    $sdkPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+    
+    if (Test-Path $sdkPath) {
+        $versions = Get-ChildItem -Path $sdkPath -Directory | Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' }
+        $found = $versions | Where-Object { $_.Name -eq $requiredVersion }
+        
+        # Also check if a later version is installed
+        $laterVersions = $versions | Where-Object { 
+            try {
+                [version]$_.Name -ge [version]$requiredVersion
+            } catch {
+                $false
+            }
+        }
+        
+        # Check if found has any items (Where-Object returns empty array @() when no matches, not $null)
+        $foundCount = @($found).Count
+        $laterVersionsCount = @($laterVersions).Count
+        
+        return @{
+            Installed = ($foundCount -gt 0 -or $laterVersionsCount -gt 0)
+            Version = if ($foundCount -gt 0) { (@($found) | Select-Object -First 1).Name } elseif ($laterVersionsCount -gt 0) { ($laterVersions | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1).Name } else { $null }
+            RequiredVersion = $requiredVersion
+            AvailableVersions = $versions | ForEach-Object { $_.Name }
+        }
+    }
+    
+    return @{
+        Installed = $false
+        Version = $null
+        RequiredVersion = $requiredVersion
+        AvailableVersions = @()
+    }
+}
+
+function Invoke-PrerequisitesHandler {
+    param([System.Net.HttpListenerContext]$Context)
+    
+    $vs = Test-VisualStudio2019
+    $toolchains = Test-MSVCToolchains
+    $sdk = Test-WindowsSDK
+    $python = Find-BootstrapPython
+    
+    $result = @{
+        VisualStudio = @{
+            Installed = $vs.Installed
+            Path = if ($vs.Installed) { $vs.Path } else { $null }
+        }
+        MSVCToolchains = @{
+            AllPresent = $toolchains.AllPresent
+            Found = $toolchains.Found
+            Missing = $toolchains.Missing
+        }
+        WindowsSDK = @{
+            Installed = $sdk.Installed
+            Version = $sdk.Version
+            RequiredVersion = $sdk.RequiredVersion
+            AvailableVersions = $sdk.AvailableVersions
+        }
+        BootstrapPython = @{
+            Found = ($python.Count -gt 0)
+            Versions = $python | ForEach-Object { @{ Path = $_.Path; Version = $_.Version } }
+        }
+        AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0))
+    }
+    
+    Send-JsonResponse -Context $Context -Data $result
+}
+
+function Invoke-DocumentationHandler {
+    param(
+        [System.Net.HttpListenerContext]$Context,
+        [string]$DocName
+    )
+    
+    $docPath = Join-Path $PSScriptRoot "..\documentation\$DocName.md"
+    $resolvedPath = Resolve-Path $docPath -ErrorAction SilentlyContinue
+    
+    if (-not $resolvedPath) {
+        Send-TextResponse -Context $Context -Text "Documentation not found: $DocName" -StatusCode 404
+        return
+    }
+    
+    # Prevent path traversal
+    $docDir = Join-Path $PSScriptRoot "..\documentation"
+    $resolvedDocDir = Resolve-Path $docDir -ErrorAction SilentlyContinue
+    
+    if (-not $resolvedDocDir) {
+        Send-TextResponse -Context $Context -Text "Documentation directory not found" -StatusCode 404
+        return
+    }
+    
+    $normalizedDocDir = $resolvedDocDir.Path.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $normalizedResolvedPath = $resolvedPath.Path.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    
+    if (-not $normalizedResolvedPath.StartsWith($normalizedDocDir, [StringComparison]::OrdinalIgnoreCase)) {
+        Send-TextResponse -Context $Context -Text "Access denied" -StatusCode 403
+        return
+    }
+    
+    if (Test-Path $resolvedPath -PathType Leaf) {
+        $content = Get-Content $resolvedPath -Raw
+        Send-TextResponse -Context $Context -Text $content -ContentType "text/markdown"
+    } else {
+        Send-TextResponse -Context $Context -Text "Documentation not found" -StatusCode 404
+    }
+}
+
 function Invoke-SetupVenvHandler {
     param([System.Net.HttpListenerContext]$Context)
     
@@ -585,6 +780,58 @@ function Get-HtmlUI {
             line-height: 1.5;
         }
         .note strong { color: #1a3c5e; margin-bottom: 4px; }
+        .prereq-panel {
+            background: rgba(248, 249, 250, 0.9);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .prereq-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #ddd;
+        }
+        .prereq-item.ready {
+            border-left-color: #28a745;
+        }
+        .prereq-item.not-ready {
+            border-left-color: #dc3545;
+        }
+        .prereq-item .status-icon {
+            font-size: 1.2em;
+            margin-right: 10px;
+        }
+        .prereq-item .status-icon.ready::before {
+            content: "\2713";
+            color: #28a745;
+        }
+        .prereq-item .status-icon.not-ready::before {
+            content: "\2717";
+            color: #dc3545;
+        }
+        .help-link {
+            margin-left: 10px;
+            color: #3776ab;
+            text-decoration: none;
+            font-size: 0.9em;
+            border-bottom: 1px dotted #3776ab;
+        }
+        .help-link:hover {
+            color: #2b5d88;
+            border-bottom: 1px solid #2b5d88;
+        }
+        .help-link::after {
+            content: " \2197";
+            font-size: 0.8em;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -597,6 +844,17 @@ function Get-HtmlUI {
         <div class="content">
             <div class="note">
                 <strong>Note:</strong> The build will open in a new terminal window where you can see all output in real-time.
+            </div>
+            
+            <div class="section">
+                <h2>Prerequisites</h2>
+                <div class="prereq-panel" id="prereqPanel">
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div>
+                        <span>Checking prerequisites...</span>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="checkPrerequisites()">Refresh</button>
             </div>
             
             <div class="section">
@@ -821,7 +1079,88 @@ function Get-HtmlUI {
             }
         }
         
+        async function checkPrerequisites() {
+            const panel = document.getElementById('prereqPanel');
+            panel.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div><span>Checking prerequisites...</span></div>';
+            
+            try {
+                const response = await fetch('/api/prerequisites');
+                const data = await response.json();
+                
+                let html = '';
+                
+                // Visual Studio
+                const vsStatus = data.VisualStudio.Installed ? 'ready' : 'not-ready';
+                const vsIcon = data.VisualStudio.Installed ? 'ready' : 'not-ready';
+                const vsPath = data.VisualStudio.Installed ? (data.VisualStudio.Path || 'Installed') : 'Not Found';
+                let vsHelpLink = '';
+                if (!data.VisualStudio.Installed) {
+                    vsHelpLink = '<a href="/api/docs/setup_visual_studio" target="_blank" class="help-link">Setup Guide</a>';
+                }
+                html += '<div class="prereq-item ' + vsStatus + '">' +
+                    '<div><span class="status-icon ' + vsIcon + '"></span><strong>Visual Studio 2019</strong></div>' +
+                    '<div>' + vsPath + vsHelpLink + '</div>' +
+                    '</div>';
+                
+                // MSVC Toolchains
+                const toolchainStatus = data.MSVCToolchains.AllPresent ? 'ready' : 'not-ready';
+                const toolchainIcon = data.MSVCToolchains.AllPresent ? 'ready' : 'not-ready';
+                const toolchainMsg = data.MSVCToolchains.AllPresent 
+                    ? 'All toolchains present' 
+                    : ('Missing: ' + data.MSVCToolchains.Missing.join(', '));
+                let toolchainHelpLink = '';
+                if (!data.MSVCToolchains.AllPresent) {
+                    toolchainHelpLink = '<a href="/api/docs/setup_visual_studio" target="_blank" class="help-link">Setup Guide</a>';
+                }
+                html += '<div class="prereq-item ' + toolchainStatus + '">' +
+                    '<div><span class="status-icon ' + toolchainIcon + '"></span><strong>MSVC Toolchains (v142)</strong></div>' +
+                    '<div>' + toolchainMsg + toolchainHelpLink + '</div>' +
+                    '</div>';
+                
+                // Windows SDK
+                const sdkStatus = data.WindowsSDK.Installed ? 'ready' : 'not-ready';
+                const sdkIcon = data.WindowsSDK.Installed ? 'ready' : 'not-ready';
+                const sdkMsg = data.WindowsSDK.Installed ? 
+                    ('Version ' + data.WindowsSDK.Version) : 
+                    ('Required: ' + data.WindowsSDK.RequiredVersion);
+                let sdkHelpLink = '';
+                if (!data.WindowsSDK.Installed) {
+                    sdkHelpLink = '<a href="/api/docs/setup_windows_sdk" target="_blank" class="help-link">Setup Guide</a>';
+                }
+                html += '<div class="prereq-item ' + sdkStatus + '">' +
+                    '<div><span class="status-icon ' + sdkIcon + '"></span><strong>Windows SDK</strong></div>' +
+                    '<div>' + sdkMsg + sdkHelpLink + '</div>' +
+                    '</div>';
+                
+                // Bootstrap Python
+                const pythonStatus = data.BootstrapPython.Found ? 'ready' : 'not-ready';
+                const pythonIcon = data.BootstrapPython.Found ? 'ready' : 'not-ready';
+                const pythonMsg = data.BootstrapPython.Found ? 
+                    (data.BootstrapPython.Versions.length + ' version(s) found') : 
+                    'Not Found';
+                let pythonHelpLink = '';
+                if (!data.BootstrapPython.Found) {
+                    pythonHelpLink = '<a href="/api/docs/setup_bootstrap_python" target="_blank" class="help-link">Setup Guide</a>';
+                }
+                html += '<div class="prereq-item ' + pythonStatus + '">' +
+                    '<div><span class="status-icon ' + pythonIcon + '"></span><strong>Bootstrap Python (3.10/3.12)</strong></div>' +
+                    '<div>' + pythonMsg + pythonHelpLink + '</div>' +
+                    '</div>';
+                
+                if (data.AllReady) {
+                    html += '<div class="alert alert-success" style="margin-top: 15px;">All prerequisites are ready! You can proceed with the build.</div>';
+                } else {
+                    html += '<div class="alert alert-error" style="margin-top: 15px;">Some prerequisites are missing. Click the "Setup Guide" links above for installation instructions.</div>';
+                }
+                
+                panel.innerHTML = html;
+            } catch (error) {
+                panel.innerHTML = '<div class="alert alert-error">Error checking prerequisites: ' + error.message + '</div>';
+            }
+        }
+        
         // Auto-detect on load
+        checkPrerequisites();
         detectPaths();
     </script>
 </body>
@@ -870,11 +1209,16 @@ function Start-WebServer {
                     try {
                         if ($path -eq "/" -or $path -eq "") {
                             Send-TextResponse -Context $context -Text (Get-HtmlUI)
+                        } elseif ($path -eq "/api/prerequisites") {
+                            Invoke-PrerequisitesHandler -Context $context
                         } elseif ($path -eq "/api/detect-paths") {
                             $python = Find-BootstrapPython
                             Send-JsonResponse -Context $context -Data @{
                                 Python = if ($python.Count -gt 0) { $python[0].Path } else { $null }
                             }
+                        } elseif ($path -match "^/api/docs/(.+)$") {
+                            $docName = $matches[1]
+                            Invoke-DocumentationHandler -Context $context -DocName $docName
                         } elseif ($path -eq "/api/setup-venv") {
                             Invoke-SetupVenvHandler -Context $context
                         } elseif ($path -eq "/api/build") {

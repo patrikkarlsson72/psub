@@ -15,7 +15,6 @@ Ensure these **Individual Components** are installed:
 
 - MSVC v142 – VS 2019 C++ x64/x86 build tools  
 - MSVC v142 – VS 2019 C++ ARM64 build tools  
-- MSVC v142 – VS 2019 C++ ARM64EC build tools  
 
 > WiX 3.14 requires ARM64 toolchains even when building x64 installers.
 
@@ -120,7 +119,7 @@ Included:
 # 7. Common Issues and Fixes
 
 ### Build tools for v142/v143 missing
-Install ARM64 + ARM64EC toolsets.
+Install ARM64 toolsets.
 
 ### WiX errors
 Run:
