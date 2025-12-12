@@ -32,6 +32,12 @@ function Send-JsonResponse {
     )
     
     $json = $Data | ConvertTo-Json -Depth 10 -Compress
+    
+    # Debug: Log JSON for prerequisites endpoint
+    if ($Context.Request.Url.AbsolutePath -eq "/api/prerequisites") {
+        Write-Host "[DEBUG] JSON Response (prerequisites): $($json.Substring(0, [Math]::Min(500, $json.Length)))..." -ForegroundColor Gray
+    }
+    
     $buffer = [System.Text.Encoding]::UTF8.GetBytes($json)
     
     $response = $Context.Response
@@ -100,39 +106,55 @@ function Find-BootstrapPython {
     
     $found = @()
     
+    Write-Host "[DEBUG] Searching for Bootstrap Python..." -ForegroundColor Cyan
+    
     foreach ($pattern in $searchPaths) {
+        Write-Host "[DEBUG] Searching pattern: $pattern" -ForegroundColor Gray
         try {
             $dirs = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue -Directory
+            Write-Host "[DEBUG] Found $($dirs.Count) directories matching pattern" -ForegroundColor Gray
             foreach ($dir in $dirs) {
                 $pythonExe = Join-Path $dir.FullName "python.exe"
+                Write-Host "[DEBUG] Checking: $pythonExe" -ForegroundColor Gray
                 if (Test-Path $pythonExe) {
                     try {
                         $versionOutput = & $pythonExe --version 2>&1
                         $versionStr = $versionOutput | Out-String
+                        Write-Host "[DEBUG] Version output: $versionStr" -ForegroundColor Gray
                         
                         if ($versionStr -match 'Python\s+(\d+)\.(\d+)') {
                             $major = [int]$matches[1]
                             $minor = [int]$matches[2]
+                            Write-Host "[DEBUG] Parsed version: $major.$minor" -ForegroundColor Gray
                             
                             # Accept Python 3.10 or 3.12 only
                             if (($major -eq 3) -and (($minor -eq 10) -or ($minor -eq 12))) {
+                                Write-Host "[DEBUG] [OK] Found compatible Python: $pythonExe" -ForegroundColor Green
                                 $found += @{
                                     Path = $pythonExe
                                     Version = "Python $major.$minor"
                                     Major = $major
                                     Minor = $minor
                                 }
+                            } else {
+                                Write-Host "[DEBUG] [X] Incompatible version: $major.$minor (need 3.10 or 3.12)" -ForegroundColor Yellow
                             }
+                        } else {
+                            Write-Host "[DEBUG] [X] Could not parse version from: $versionStr" -ForegroundColor Yellow
                         }
                     } catch {
-                        # Skip this python.exe if version check fails
+                        Write-Host "[DEBUG] [X] Version check failed: $_" -ForegroundColor Red
                     }
+                } else {
+                    Write-Host "[DEBUG] [X] python.exe not found at: $pythonExe" -ForegroundColor Gray
                 }
             }
         } catch {
-            # Skip this search path if it fails
+            Write-Host "[DEBUG] [X] Search path failed: $_" -ForegroundColor Red
         }
     }
+    
+    Write-Host "[DEBUG] Total compatible Python installations found: $($found.Count)" -ForegroundColor Cyan
     
     # Sort by version (prefer 3.12 over 3.10)
     return $found | Sort-Object { $_.Minor } -Descending
@@ -286,9 +308,14 @@ function Invoke-PrerequisitesHandler {
         }
         BootstrapPython = @{
             Found = ($python.Count -gt 0)
-            Versions = $python | ForEach-Object { @{ Path = $_.Path; Version = $_.Version } }
+            Versions = @($python | ForEach-Object { @{ Path = $_.Path; Version = $_.Version } })
         }
         AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0))
+    }
+    
+    Write-Host "[DEBUG] Bootstrap Python result: Found=$($result.BootstrapPython.Found), Versions count=$($result.BootstrapPython.Versions.Count)" -ForegroundColor Cyan
+    if ($result.BootstrapPython.Versions.Count -gt 0) {
+        Write-Host "[DEBUG] First version: $($result.BootstrapPython.Versions[0].Version) at $($result.BootstrapPython.Versions[0].Path)" -ForegroundColor Cyan
     }
     
     Send-JsonResponse -Context $Context -Data $result
@@ -1014,6 +1041,10 @@ function Get-HtmlUI {
                 const response = await fetch('/api/detect-paths');
                 const data = await response.json();
                 
+                console.log('[DEBUG] detectPaths response:', data);
+                console.log('[DEBUG] data.Python:', data.Python);
+                console.log('[DEBUG] data.Python type:', typeof data.Python);
+                
                 if (data.Python) {
                     document.getElementById('bootstrapPython').value = data.Python;
                     showAlert('Python path auto-detected', 'success');
@@ -1021,6 +1052,7 @@ function Get-HtmlUI {
                     showAlert('No compatible Python found', 'error');
                 }
             } catch (error) {
+                console.error('[DEBUG] detectPaths error:', error);
                 showAlert('Error detecting paths: ' + error.message, 'error');
             }
         }
@@ -1188,6 +1220,13 @@ function Get-HtmlUI {
                 const response = await fetch('/api/prerequisites');
                 const data = await response.json();
                 
+                // Debug: Log the response data
+                console.log('[DEBUG] Prerequisites response:', data);
+                console.log('[DEBUG] BootstrapPython:', data.BootstrapPython);
+                console.log('[DEBUG] Versions:', data.BootstrapPython.Versions);
+                console.log('[DEBUG] Versions type:', typeof data.BootstrapPython.Versions);
+                console.log('[DEBUG] Versions length:', data.BootstrapPython.Versions ? data.BootstrapPython.Versions.length : 'undefined');
+                
                 let html = '';
                 
                 // Visual Studio
@@ -1236,8 +1275,9 @@ function Get-HtmlUI {
                 // Bootstrap Python
                 const pythonStatus = data.BootstrapPython.Found ? 'ready' : 'not-ready';
                 const pythonIcon = data.BootstrapPython.Found ? 'ready' : 'not-ready';
+                const pythonVersionsArray = data.BootstrapPython.Versions || [];
                 const pythonMsg = data.BootstrapPython.Found ? 
-                    (data.BootstrapPython.Versions.length + ' version(s) found') : 
+                    (pythonVersionsArray.length + ' version(s) found') : 
                     'Not Found';
                 let pythonHelpLink = '';
                 if (!data.BootstrapPython.Found) {
@@ -1313,9 +1353,18 @@ function Start-WebServer {
                         } elseif ($path -eq "/api/prerequisites") {
                             Invoke-PrerequisitesHandler -Context $context
                         } elseif ($path -eq "/api/detect-paths") {
-                            $python = Find-BootstrapPython
+                            $python = @(Find-BootstrapPython)
+                            Write-Host "[DEBUG] /api/detect-paths - Python type: $($python.GetType().Name)" -ForegroundColor Cyan
+                            Write-Host "[DEBUG] /api/detect-paths - Python count: $($python.Count)" -ForegroundColor Cyan
+                            Write-Host "[DEBUG] /api/detect-paths - Python value: $python" -ForegroundColor Cyan
+                            if ($python.Count -gt 0) {
+                                Write-Host "[DEBUG] /api/detect-paths - First element type: $($python[0].GetType().Name)" -ForegroundColor Cyan
+                                Write-Host "[DEBUG] /api/detect-paths - First Python Path: $($python[0].Path)" -ForegroundColor Cyan
+                            }
+                            $pythonPath = if ($python.Count -gt 0) { $python[0].Path } else { $null }
+                            Write-Host "[DEBUG] /api/detect-paths - Returning: $pythonPath" -ForegroundColor Cyan
                             Send-JsonResponse -Context $context -Data @{
-                                Python = if ($python.Count -gt 0) { $python[0].Path } else { $null }
+                                Python = $pythonPath
                             }
                         } elseif ($path -match "^/api/docs/(.+)$") {
                             $docName = $matches[1]
