@@ -28,6 +28,12 @@ Install:
 
 (Not Python 3.13)
 
+## Git for Windows
+Install Git and ensure it's in your PATH:
+- Download from: https://git-scm.com/download/win
+- Required for the MSI installer build process
+- Verify installation: `git --version`
+
 ---
 
 # 2. Prepare the Source
@@ -136,6 +142,20 @@ pip install -r Doc\requirements.txt
 Always use:
 ```
 x64 Native Tools Command Prompt for VS 2019
+```
+
+### Cannot find Git on PATH
+Install Git for Windows:
+```
+Download from: https://git-scm.com/download/win
+```
+Or via winget:
+```
+winget install --id Git.Git -e --source winget
+```
+After installation, restart your terminal and verify:
+```
+git --version
 ```
 
 ---

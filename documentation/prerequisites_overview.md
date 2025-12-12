@@ -11,6 +11,7 @@ Before starting a build, ensure you have:
   - MSVC v142 toolchains (x64/x86, ARM64)
 - ✅ **Windows 10 SDK** (version 10.0.19041.0 or later)
 - ✅ **Bootstrap Python** (3.10 or 3.12, NOT 3.13)
+- ✅ **Git for Windows** (required for MSI installer build)
 - ✅ **CPython Source Code** (extracted to a local directory)
 
 ## Detailed Setup Guides
@@ -32,6 +33,11 @@ For detailed installation instructions, see:
    - Installation options
    - Path configuration
 
+4. **[Git Setup](setup_git.md)**
+   - Required for MSI installer build
+   - Installation methods
+   - Verification steps
+
 ## Verification
 
 The PSUB web UI includes a prerequisites checker that will:
@@ -40,6 +46,8 @@ The PSUB web UI includes a prerequisites checker that will:
 - ✅ Verify all required MSVC toolchains are present
 - ✅ Confirm Windows SDK is installed
 - ✅ Detect Bootstrap Python (3.10 or 3.12)
+
+**Note:** Git detection is not yet automated in the UI, but is required for the MSI build step.
 
 If any prerequisites are missing, the UI will show help links to the relevant setup guides.
 
@@ -57,8 +65,9 @@ Recommended installation order:
 1. Install **Visual Studio 2019** with required components
 2. Verify **Windows SDK** is installed (usually included with VS)
 3. Install **Bootstrap Python** (3.10 or 3.12)
-4. Extract **CPython source code**
-5. Run PSUB and check prerequisites
+4. Install **Git for Windows**
+5. Extract **CPython source code**
+6. Run PSUB and check prerequisites
 
 ## Getting Help
 

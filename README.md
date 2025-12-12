@@ -29,6 +29,7 @@ PSUB/
 │   ├── setup_visual_studio.md
 │   ├── setup_windows_sdk.md
 │   ├── setup_bootstrap_python.md
+│   ├── setup_git.md
 │   └── python_build_minimal_guide.md
 └── assets/
     └── (background images and other assets)
@@ -52,6 +53,7 @@ PSUB/
   - MSVC v142 toolsets (x64/x86, ARM64, ARM64EC)
 - Windows 10 SDK (10.0.19041.0)
 - Bootstrap Python (3.10 or 3.12)
+- Git for Windows (required for MSI installer build)
 
 ### Basic Usage
 
@@ -89,6 +91,7 @@ The documentation guides are rendered as formatted HTML with proper styling for 
 - **[Visual Studio Setup](documentation/setup_visual_studio.md)** - Installing and configuring VS 2019
 - **[Windows SDK Setup](documentation/setup_windows_sdk.md)** - Installing the required SDK version
 - **[Bootstrap Python Setup](documentation/setup_bootstrap_python.md)** - Installing Python for build scripts
+- **[Git Setup](documentation/setup_git.md)** - Installing Git for Windows
 - **[Minimal Build Guide](documentation/python_build_minimal_guide.md)** - Step-by-step build instructions
 
 All documentation is accessible through the web UI at `/api/docs/<guide-name>` or directly from the `documentation/` folder.
