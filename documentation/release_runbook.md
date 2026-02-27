@@ -34,7 +34,7 @@ This runbook captures the repeatable workflow for building CPython security rele
 
 - Error indicates legacy WiX/MSBuild dependency missing.
 - Ensure `Tools\msi\get_externals.bat` was run.
-- Ensure .NET 3.5 components required by the WiX toolchain are available.
+- Ensure `.NET Framework 3.5 (includes .NET 2.0 and 3.0)` is enabled for legacy WiX toolchain flows (notably Python 3.10).
 
 ### 2) `buildrelease.bat` false success exit code
 

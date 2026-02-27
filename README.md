@@ -54,6 +54,7 @@ PSUB/
 - Windows 10 SDK (10.0.19041.0)
 - Bootstrap Python (3.10 or 3.12)
 - Git for Windows (required for MSI installer build)
+- .NET Framework 3.5 (includes .NET 2.0 and 3.0), required for legacy WiX/MSI builds (notably Python 3.10)
 
 ### Basic Usage
 

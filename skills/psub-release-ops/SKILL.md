@@ -43,7 +43,7 @@ Use this skill for repeatable CPython security-release operations in this reposi
 
 ## Known behavior to remember
 
-- Python 3.10 MSI builds may depend on legacy WiX/MSBuild components and fail with `MSB4062` if prerequisites are missing.
+- Python 3.10 MSI builds may depend on legacy WiX/MSBuild components and can fail with `MSB4062` if `.NET Framework 3.5` is not enabled.
 - `buildrelease.bat` can sometimes output `Build FAILED.` even when process exit code is `0`.
 - PSUB script has been updated to detect this mismatch and fail early in step 4.
 
