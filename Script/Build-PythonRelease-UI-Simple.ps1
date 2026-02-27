@@ -932,6 +932,37 @@ function Invoke-BuildStatusHandler {
     }
 }
 
+function Invoke-BuildLogHandler {
+    param(
+        [System.Net.HttpListenerContext]$Context,
+        [string]$BuildId
+    )
+
+    Cleanup-BuildStatus
+
+    if (-not $script:BuildStatus.ContainsKey($BuildId)) {
+        Send-TextResponse -Context $Context -Text "Build ID not found: $BuildId" -ContentType "text/plain" -StatusCode 404
+        return
+    }
+
+    $buildInfo = $script:BuildStatus[$BuildId]
+    $logPath = $buildInfo.LogPath
+    if (-not $logPath -or -not (Test-Path $logPath)) {
+        Send-TextResponse -Context $Context -Text "Log file not found for build: $BuildId" -ContentType "text/plain" -StatusCode 404
+        return
+    }
+
+    try {
+        $content = Get-Content -Path $logPath -Raw -ErrorAction Stop
+        if (-not $content) {
+            $content = "(Log file is currently empty)"
+        }
+        Send-TextResponse -Context $Context -Text $content -ContentType "text/plain" -StatusCode 200
+    } catch {
+        Send-TextResponse -Context $Context -Text "Failed to read log: $($_.Exception.Message)" -ContentType "text/plain" -StatusCode 500
+    }
+}
+
 function Get-HtmlUI {
     return @"
 <!DOCTYPE html>
@@ -944,7 +975,7 @@ function Get-HtmlUI {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: url('/assets/background.png') center center / cover no-repeat fixed, linear-gradient(135deg, rgba(30, 60, 100, 0.85) 0%, rgba(20, 40, 70, 0.85) 100%);
+            background: linear-gradient(135deg, #0b2445 0%, #123a63 52%, #1e5f8f 100%);
             min-height: 100vh;
             padding: 20px;
             position: relative;
@@ -956,12 +987,15 @@ function Get-HtmlUI {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(15, 25, 45, 0.4);
+            background:
+                radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.08), transparent 40%),
+                radial-gradient(circle at 86% 82%, rgba(116, 190, 245, 0.14), transparent 45%),
+                linear-gradient(180deg, rgba(8, 18, 35, 0.25), rgba(8, 18, 35, 0.5));
             z-index: 0;
             pointer-events: none;
         }
         .container {
-            max-width: 800px;
+            max-width: 1220px;
             margin: 0 auto;
             background: transparent;
             border-radius: 16px;
@@ -970,56 +1004,46 @@ function Get-HtmlUI {
             position: relative;
             z-index: 1;
         }
-        .header {
-            background: rgba(15, 25, 45, 0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            color: white;
-            padding: 40px 30px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-            border: 1px solid rgba(55, 118, 171, 0.5);
-            border-bottom: 1px solid rgba(55, 118, 171, 0.3);
-            box-shadow: 0 0 20px rgba(55, 118, 171, 0.2);
-            border-radius: 16px 16px 0 0;
-        }
-        .header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
-            pointer-events: none;
-        }
-        .header h1 { 
-            font-size: 2.8em; 
-            margin-bottom: 10px; 
-            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            position: relative;
-            z-index: 1;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            background: linear-gradient(to right, #ffffff, #e0e0e0);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .header p {
-            position: relative;
-            z-index: 1;
-            opacity: 0.8;
-            font-size: 0.9em;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: #a0c0e0;
-        }
-        .content { 
-            padding: 30px;
+        .content {
+            padding: 20px;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1.05fr 1.35fr;
+            gap: 16px;
+        }
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            min-height: 0;
+        }
+        .panel {
+            background: rgba(249, 251, 253, 0.95);
+            border: 1px solid #d8e4f0;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(10, 31, 68, 0.06);
+            min-height: 0;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: 1px solid #dce6f0;
+        }
+        .panel-title {
+            color: #1a3c5e;
+            font-size: 1.05em;
+            font-weight: 700;
+        }
+        .panel-body {
+            padding: 12px 14px;
         }
         .section { margin-bottom: 30px; }
         .section h2 {
@@ -1042,27 +1066,80 @@ function Get-HtmlUI {
             margin-right: 12px;
             border-radius: 2px;
         }
-        .form-group { margin-bottom: 24px; }
+        .status-summary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 6px 10px;
+            background: #e7f6ed;
+            color: #1e6f42;
+        }
+        .status-summary.warn {
+            background: #fdeceb;
+            color: #8a1f1f;
+        }
+        .quick-health {
+            font-size: 0.92em;
+            color: #36526f;
+            background: #eef4fb;
+            border: 1px solid #d7e4f2;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .build-state {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .state-badge {
+            display: inline-block;
+            width: fit-content;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.8em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            background: #ecf0f5;
+            color: #425466;
+        }
+        .state-badge.running { background: #fff2d9; color: #9a6400; }
+        .state-badge.success { background: #e7f6ed; color: #1e6f42; }
+        .state-badge.failed { background: #fdeceb; color: #8a1f1f; }
+        .state-message { color: #2e4155; font-size: 0.94em; }
+        .state-error {
+            color: #7a1d1d;
+            font-size: 0.85em;
+            background: #fff1f1;
+            border: 1px solid #f3cdcd;
+            border-radius: 8px;
+            padding: 8px 10px;
+            display: none;
+        }
+        .form-group { margin-bottom: 14px; }
         .form-group label {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: #4a5568;
             font-weight: 600;
-            font-size: 0.9em;
+            font-size: 0.85em;
             letter-spacing: 0.3px;
         }
         .form-row {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: flex-end;
         }
         .form-row input { flex: 1; }
         input[type="text"] {
             width: 100%;
-            padding: 14px;
+            padding: 10px 12px;
             border: 1px solid #cbd5e0;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 13px;
             background: #f8fafc;
             color: #2d3748;
             transition: all 0.3s ease;
@@ -1075,10 +1152,10 @@ function Get-HtmlUI {
             box-shadow: 0 0 0 3px rgba(55, 118, 171, 0.15), inset 0 1px 2px rgba(0,0,0,0.05);
         }
         .btn {
-            padding: 14px 28px;
+            padding: 10px 16px;
             border: none;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1109,12 +1186,13 @@ function Get-HtmlUI {
             transform: none;
         }
         .alert {
-            padding: 15px;
+            padding: 10px 12px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 8px;
             backdrop-filter: blur(5px);
             -webkit-backdrop-filter: blur(5px);
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            font-size: 0.88em;
         }
         .alert-success {
             background: rgba(212, 237, 218, 0.9);
@@ -1136,28 +1214,42 @@ function Get-HtmlUI {
             background: rgba(235, 245, 255, 0.8);
             border-left: 4px solid #3776ab;
             border-radius: 4px;
-            padding: 16px 20px;
-            margin-bottom: 30px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
             color: #2c5282;
-            font-size: 0.95em;
-            line-height: 1.5;
+            font-size: 0.88em;
+            line-height: 1.4;
         }
         .note strong { color: #1a3c5e; margin-bottom: 4px; }
         .prereq-panel {
-            background: rgba(248, 249, 250, 0.9);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            background: transparent;
+            padding: 0;
+            margin: 0;
         }
         .prereq-item {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            margin-bottom: 10px;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px;
+            margin-bottom: 8px;
             background: white;
             border-radius: 6px;
             border-left: 4px solid #ddd;
+        }
+        .prereq-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            color: #1f334a;
+            min-width: 235px;
+        }
+        .prereq-value {
+            text-align: right;
+            color: #334a61;
+            font-size: 0.88em;
+            line-height: 1.25;
         }
         .prereq-item.ready {
             border-left-color: #28a745;
@@ -1166,8 +1258,7 @@ function Get-HtmlUI {
             border-left-color: #dc3545;
         }
         .prereq-item .status-icon {
-            font-size: 1.2em;
-            margin-right: 10px;
+            font-size: 1em;
         }
         .prereq-item .status-icon.ready::before {
             content: "\2713";
@@ -1178,10 +1269,10 @@ function Get-HtmlUI {
             color: #dc3545;
         }
         .help-link {
-            margin-left: 10px;
+            margin-left: 6px;
             color: #3776ab;
             text-decoration: none;
-            font-size: 0.9em;
+            font-size: 0.82em;
             border-bottom: 1px dotted #3776ab;
         }
         .help-link:hover {
@@ -1192,6 +1283,86 @@ function Get-HtmlUI {
             content: " \2197";
             font-size: 0.8em;
         }
+        .alert-stack {
+            max-height: 140px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            padding-right: 2px;
+        }
+        .primary-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .primary-actions .btn-primary {
+            min-width: 240px;
+        }
+        .build-inline-status {
+            margin-top: 10px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            border: 1px solid #d6e2ee;
+            background: #eff5fb;
+            color: #274766;
+            font-size: 0.88em;
+            line-height: 1.35;
+        }
+        .build-inline-status.running {
+            border-color: #f0d59f;
+            background: #fff5e5;
+            color: #8a5b00;
+        }
+        .build-inline-status.success {
+            border-color: #b8e1c7;
+            background: #e9f8ef;
+            color: #1f6b42;
+        }
+        .build-inline-status.failed {
+            border-color: #f0c7c7;
+            background: #fff0f0;
+            color: #8b2020;
+        }
+        details.advanced {
+            border: 1px solid #d3e2f1;
+            background: #f5f9ff;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-top: 8px;
+        }
+        details.advanced summary {
+            cursor: pointer;
+            color: #22476b;
+            font-weight: 700;
+            font-size: 0.9em;
+            list-style: none;
+        }
+        details.advanced summary::-webkit-details-marker { display: none; }
+        details.advanced summary::before { content: "+ "; color: #3776ab; font-weight: 700; }
+        details.advanced[open] summary::before { content: "- "; }
+        details.advanced .advanced-body { padding-top: 10px; }
+        @media (min-width: 1200px) {
+            .content { height: calc(100vh - 40px); overflow: hidden; }
+            .dashboard { height: 100%; }
+            .panel { overflow: hidden; }
+            .left-column .panel.prereq-panel-wrap { flex: 1; display: flex; flex-direction: column; }
+            .left-column .panel.prereq-panel-wrap .panel-body { overflow-y: auto; }
+            .right-column .panel.config-panel-wrap { flex: 1; display: flex; flex-direction: column; }
+            .right-column .panel.config-panel-wrap .panel-body { overflow-y: auto; }
+        }
+        @media (max-width: 1199px) {
+            .dashboard { grid-template-columns: 1fr; }
+            .content { height: auto; overflow: visible; }
+        }
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .content { padding: 12px; }
+            .form-row { flex-direction: column; align-items: stretch; }
+            .prereq-item { flex-direction: column; align-items: stretch; }
+            .prereq-value { text-align: left; }
+            .prereq-label { min-width: 0; }
+            .primary-actions .btn-primary { width: 100%; min-width: 0; }
+        }
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -1199,69 +1370,109 @@ function Get-HtmlUI {
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>PSUB</h1>
-            <p>Python Security Update Builder</p>
-        </div>
-        
         <div class="content">
             <div class="note">
-                <strong>Note:</strong> The build will open in a new terminal window where you can see all output in real-time.
+                <strong>Note:</strong> Build opens in a new terminal window with real-time output.
             </div>
-            
-            <div class="section">
-                <h2>Prerequisites</h2>
-                <div class="prereq-panel" id="prereqPanel">
-                    <div style="text-align: center; padding: 20px;">
-                        <div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div>
-                        <span>Checking prerequisites...</span>
+
+            <div class="dashboard">
+                <div class="column left-column">
+                    <div class="panel prereq-panel-wrap">
+                        <div class="panel-header">
+                            <div class="panel-title">Prerequisites</div>
+                            <button class="btn btn-secondary" onclick="checkPrerequisites()">Refresh</button>
+                        </div>
+                        <div class="panel-body">
+                            <div id="prereqSummary" class="status-summary">Checking...</div>
+                            <div id="prereqPanel" class="prereq-panel" style="margin-top: 10px;">
+                                <div style="text-align: center; padding: 20px;">
+                                    <div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div>
+                                    <span>Checking prerequisites...</span>
+                                </div>
+                            </div>
+                            <div id="quickHealthText" class="quick-health" style="margin-top: 10px;">Health summary will appear after prerequisite check.</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="column right-column">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Standard Build Settings</div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-group">
+                                <label for="venvName">Virtual Environment Name</label>
+                                <input type="text" id="venvName" value="doc-venv" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="releaseRoot">Release Output Directory</label>
+                                <input type="text" id="releaseRoot" value="C:\python-releases" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="winSdkVersion">Windows SDK Version</label>
+                                <input type="text" id="winSdkVersion" value="10.0.19041.0" />
+                            </div>
+
+                            <div class="form-group">
+                                <button class="btn btn-secondary" onclick="setupVenv()" id="setupVenvBtn">Setup Virtual Environment</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel config-panel-wrap">
+                        <div class="panel-header">
+                            <div class="panel-title">Build Configuration</div>
+                        </div>
+                        <div class="panel-body">
+                            <div id="alertContainer" class="alert-stack"></div>
+
+                            <div class="form-group">
+                                <label for="sourcePath">CPython Source Path</label>
+                                <input type="text" id="sourcePath" placeholder="C:\src\Python-3.10.18\Python-3.10.18\Python-3.10.18" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="bootstrapPython">Bootstrap Python (3.10 or 3.12)</label>
+                                <div class="form-row">
+                                    <input type="text" id="bootstrapPython" placeholder="C:\...\python.exe" />
+                                    <button class="btn btn-secondary" onclick="detectPaths()">Auto-Detect</button>
+                                </div>
+                            </div>
+
+                            <div class="primary-actions">
+                                <button class="btn btn-primary" onclick="startBuild()" id="startBuildBtn">Start Build (Opens New Window)</button>
+                                <button class="btn btn-secondary" onclick="openLatestLog()" id="openLogBtn" disabled>Open Latest Log</button>
+                            </div>
+                            <div id="buildInlineStatus" class="build-inline-status">Not started. Build runs in an external terminal window.</div>
+                        </div>
                     </div>
                 </div>
-                <button class="btn btn-secondary" onclick="checkPrerequisites()">Refresh</button>
-            </div>
-            
-            <div class="section">
-                <h2>Build Configuration</h2>
-                <div id="alertContainer"></div>
-                
-                <div class="form-group">
-                    <label for="sourcePath">CPython Source Path</label>
-                    <input type="text" id="sourcePath" placeholder="C:\src\Python-3.10.18\Python-3.10.18\Python-3.10.18" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="bootstrapPython">Bootstrap Python (3.10 or 3.12)</label>
-                    <div class="form-row">
-                        <input type="text" id="bootstrapPython" placeholder="C:\...\python.exe" />
-                        <button class="btn btn-secondary" onclick="detectPaths()">Auto-Detect</button>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="venvName">Virtual Environment Name</label>
-                    <input type="text" id="venvName" value="doc-venv" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="releaseRoot">Release Output Directory</label>
-                    <input type="text" id="releaseRoot" value="C:\python-releases" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="winSdkVersion">Windows SDK Version</label>
-                    <input type="text" id="winSdkVersion" value="10.0.19041.0" />
-                </div>
-                
-                <div class="form-group">
-                    <button class="btn btn-secondary" onclick="setupVenv()" id="setupVenvBtn">Setup Virtual Environment</button>
-                </div>
-                
-                <button class="btn btn-primary" onclick="startBuild()" id="startBuildBtn">Start Build (Opens New Window)</button>
             </div>
         </div>
     </div>
     
     <script>
+        function setInlineBuildStatus(status, message) {
+            const el = document.getElementById('buildInlineStatus');
+            el.className = 'build-inline-status';
+            if (status === 'running' || status === 'success' || status === 'failed') {
+                el.classList.add(status);
+            }
+            el.textContent = message;
+        }
+
+        function openLatestLog() {
+            if (!currentBuildId) {
+                showAlert('No build log available yet.', 'info');
+                return;
+            }
+            window.open('/api/build-log/' + encodeURIComponent(currentBuildId), '_blank');
+        }
+
         function showAlert(message, type = 'info') {
             const container = document.getElementById('alertContainer');
             const alert = document.createElement('div');
@@ -1354,18 +1565,23 @@ function Get-HtmlUI {
                 const data = await response.json();
                 
                 const btn = document.getElementById('startBuildBtn');
+                const openLogBtn = document.getElementById('openLogBtn');
+                if (data.LogPath) {
+                    openLogBtn.disabled = false;
+                }
                 
                 if (data.Status === 'running') {
                     btn.textContent = 'Building...';
                     btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                    setInlineBuildStatus('running', 'Build started in external terminal. Open Latest Log to follow output.');
                 } else if (data.Status === 'success') {
                     btn.textContent = 'Build Finished Successfully!';
                     btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
                     btn.disabled = false;
                     showAlert('Build completed successfully!', 'success');
+                    setInlineBuildStatus('success', 'Last result: Success. You can open latest log or start a new build.');
                     clearInterval(buildStatusInterval);
                     buildStatusInterval = null;
-                    currentBuildId = null;
                     
                     // Reset button after 5 seconds
                     setTimeout(() => {
@@ -1378,9 +1594,12 @@ function Get-HtmlUI {
                     btn.disabled = false;
                     const extraError = data.LastErrorSnippet ? (' Last error: ' + data.LastErrorSnippet) : '';
                     showAlert('Build failed. Check terminal window/log for details.' + extraError, 'error');
+                    const failMsg = data.LastErrorSnippet
+                        ? ('Last result: Failed. ' + data.LastErrorSnippet)
+                        : 'Last result: Failed. Open latest log for details.';
+                    setInlineBuildStatus('failed', failMsg);
                     clearInterval(buildStatusInterval);
                     buildStatusInterval = null;
-                    currentBuildId = null;
                     
                     // Reset button after 5 seconds
                     setTimeout(() => {
@@ -1390,6 +1609,7 @@ function Get-HtmlUI {
                 }
             } catch (error) {
                 console.error('Error checking build status:', error);
+                setInlineBuildStatus('failed', 'Could not fetch build status: ' + error.message);
             }
         }
         
@@ -1408,6 +1628,7 @@ function Get-HtmlUI {
             const btn = document.getElementById('startBuildBtn');
             btn.disabled = true;
             btn.textContent = 'Starting...';
+            setInlineBuildStatus('running', 'Starting build in external terminal...');
             
             try {
                 const response = await fetch('/api/build', {
@@ -1426,8 +1647,10 @@ function Get-HtmlUI {
                 if (data.Success) {
                     showAlert('Build started! Check the new terminal window for progress.', 'success');
                     currentBuildId = data.BuildId;
+                    document.getElementById('openLogBtn').disabled = false;
                     btn.textContent = 'Building...';
                     btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                    setInlineBuildStatus('running', 'Build started in external terminal. Open Latest Log to follow output.');
                     
                     // Poll build status every 2 seconds
                     if (buildStatusInterval) {
@@ -1440,18 +1663,26 @@ function Get-HtmlUI {
                     btn.disabled = false;
                     btn.textContent = 'Start Build (Opens New Window)';
                     btn.style.background = '';
+                    setInlineBuildStatus('failed', 'Failed to start build: ' + (data.Error || 'Unknown error'));
                 }
             } catch (error) {
                 showAlert('Error starting build: ' + error.message, 'error');
                 btn.disabled = false;
                 btn.textContent = 'Start Build (Opens New Window)';
                 btn.style.background = '';
+                setInlineBuildStatus('failed', 'Error while starting build: ' + error.message);
             }
         }
         
         async function checkPrerequisites() {
             const panel = document.getElementById('prereqPanel');
+            const summary = document.getElementById('prereqSummary');
+            const quickHealth = document.getElementById('quickHealthText');
             panel.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div><span>Checking prerequisites...</span></div>';
+            summary.className = 'status-summary';
+            summary.textContent = 'Checking...';
+            quickHealth.className = 'quick-health';
+            quickHealth.textContent = 'Checking environment health...';
             
             try {
                 const response = await fetch('/api/prerequisites');
@@ -1477,8 +1708,8 @@ function Get-HtmlUI {
                     vsHelpLink = '<a href="/api/docs/setup_visual_studio" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + vsStatus + '">' +
-                    '<div><span class="status-icon ' + vsIcon + '"></span><strong>Visual Studio (2019/2022)</strong></div>' +
-                    '<div>' + vsPath + vsHelpLink + '</div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + vsIcon + '"></span><span>Visual Studio (2019/2022)</span></div>' +
+                    '<div class="prereq-value">' + vsPath + vsHelpLink + '</div>' +
                     '</div>';
                 
                 // MSVC Toolchains
@@ -1492,8 +1723,8 @@ function Get-HtmlUI {
                     toolchainHelpLink = '<a href="/api/docs/setup_visual_studio" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + toolchainStatus + '">' +
-                    '<div><span class="status-icon ' + toolchainIcon + '"></span><strong>MSVC Toolchains (v142)</strong></div>' +
-                    '<div>' + toolchainMsg + toolchainHelpLink + '</div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + toolchainIcon + '"></span><span>MSVC Toolchains (v142)</span></div>' +
+                    '<div class="prereq-value">' + toolchainMsg + toolchainHelpLink + '</div>' +
                     '</div>';
                 
                 // Windows SDK
@@ -1507,8 +1738,8 @@ function Get-HtmlUI {
                     sdkHelpLink = '<a href="/api/docs/setup_windows_sdk" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + sdkStatus + '">' +
-                    '<div><span class="status-icon ' + sdkIcon + '"></span><strong>Windows SDK</strong></div>' +
-                    '<div>' + sdkMsg + sdkHelpLink + '</div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + sdkIcon + '"></span><span>Windows SDK</span></div>' +
+                    '<div class="prereq-value">' + sdkMsg + sdkHelpLink + '</div>' +
                     '</div>';
                 
                 // Bootstrap Python
@@ -1523,8 +1754,8 @@ function Get-HtmlUI {
                     pythonHelpLink = '<a href="/api/docs/setup_bootstrap_python" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + pythonStatus + '">' +
-                    '<div><span class="status-icon ' + pythonIcon + '"></span><strong>Bootstrap Python (3.10/3.12)</strong></div>' +
-                    '<div>' + pythonMsg + pythonHelpLink + '</div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + pythonIcon + '"></span><span>Bootstrap Python (3.10/3.12)</span></div>' +
+                    '<div class="prereq-value">' + pythonMsg + pythonHelpLink + '</div>' +
                     '</div>';
 
                 // Git for Windows
@@ -1536,23 +1767,42 @@ function Get-HtmlUI {
                     gitHelpLink = '<a href="/api/docs/setup_git" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + gitStatus + '">' +
-                    '<div><span class="status-icon ' + gitIcon + '"></span><strong>Git for Windows</strong></div>' +
-                    '<div>' + gitMsg + gitHelpLink + '</div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + gitIcon + '"></span><span>Git for Windows</span></div>' +
+                    '<div class="prereq-value">' + gitMsg + gitHelpLink + '</div>' +
                     '</div>';
+
+                const checks = [
+                    data.VisualStudio.Installed,
+                    data.MSVCToolchains.AllPresent,
+                    data.WindowsSDK.Installed,
+                    data.BootstrapPython.Found,
+                    data.Git.Installed
+                ];
+                const missingCount = checks.filter(x => !x).length;
                 
                 if (data.AllReady) {
                     html += '<div class="alert alert-success" style="margin-top: 15px;">All prerequisites are ready! You can proceed with the build.</div>';
+                    summary.className = 'status-summary';
+                    summary.textContent = 'All Ready';
+                    quickHealth.textContent = 'Environment health is green. Build can be started.';
                 } else {
                     html += '<div class="alert alert-error" style="margin-top: 15px;">Some prerequisites are missing. Click the "Setup Guide" links above for installation instructions.</div>';
+                    summary.className = 'status-summary warn';
+                    summary.textContent = missingCount + ' Missing';
+                    quickHealth.textContent = 'Environment health needs attention. Resolve missing prerequisites first.';
                 }
                 
                 panel.innerHTML = html;
             } catch (error) {
                 panel.innerHTML = '<div class="alert alert-error">Error checking prerequisites: ' + error.message + '</div>';
+                summary.className = 'status-summary warn';
+                summary.textContent = 'Check Failed';
+                quickHealth.textContent = 'Prerequisite check failed. Refresh and verify setup.';
             }
         }
         
         // Auto-detect on load
+        setInlineBuildStatus('idle', 'Not started. Build runs in an external terminal window.');
         checkPrerequisites();
         detectPaths();
     </script>
@@ -1630,6 +1880,9 @@ function Start-WebServer {
                         } elseif ($path -match "^/api/build-status/(.+)$") {
                             $buildId = $matches[1]
                             Invoke-BuildStatusHandler -Context $context -BuildId $buildId
+                        } elseif ($path -match "^/api/build-log/(.+)$") {
+                            $buildId = $matches[1]
+                            Invoke-BuildLogHandler -Context $context -BuildId $buildId
                         } elseif ($path.StartsWith("/assets/")) {
                             # Serve static files from assets folder
                             $assetsPath = Resolve-Path (Join-Path $PSScriptRoot "..\assets") -ErrorAction SilentlyContinue
