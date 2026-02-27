@@ -47,7 +47,7 @@ The PSUB web UI includes a prerequisites checker that will:
 - ✅ Confirm Windows SDK is installed
 - ✅ Detect Bootstrap Python (3.10 or 3.12)
 
-**Note:** Git detection is not yet automated in the UI, but is required for the MSI build step.
+**Note:** Git detection is now automated in the UI and included in the overall readiness check.
 
 If any prerequisites are missing, the UI will show help links to the relevant setup guides.
 

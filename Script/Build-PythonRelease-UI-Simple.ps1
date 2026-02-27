@@ -15,6 +15,7 @@ $ErrorActionPreference = "Stop"
 # Global state
 $script:ServerListener = $null
 $script:BuildStatus = @{}  # Track build status by ID
+$script:BuildStatusTtlHours = 24
 
 function Write-Info($msg) {
     Write-Host "[INFO] $msg" -ForegroundColor Cyan
@@ -79,20 +80,90 @@ function Get-RequestBody {
     return $body
 }
 
-function Find-VcVars64 {
-    $vsPaths = @(
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"
+function Get-VsWherePath {
+    $candidates = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
     )
-    
-    foreach ($vsPath in $vsPaths) {
-        $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
-        if (Test-Path $vcvars) {
-            return $vcvars
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
         }
     }
-    
+
+    return $null
+}
+
+function Get-VisualStudioInstallations {
+    $installs = @()
+    $vswhere = Get-VsWherePath
+
+    if ($vswhere) {
+        try {
+            $json = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json -utf8 2>$null
+            if ($json) {
+                $parsed = $json | ConvertFrom-Json
+                foreach ($item in @($parsed)) {
+                    if (-not $item.installationPath) {
+                        continue
+                    }
+
+                    $vcvars = Join-Path $item.installationPath "VC\Auxiliary\Build\vcvars64.bat"
+                    $installs += @{
+                        Path = $item.installationPath
+                        Version = $item.catalog.productDisplayVersion
+                        Product = $item.catalog.productLineVersion
+                        InstanceId = $item.instanceId
+                        VcVars = $vcvars
+                    }
+                }
+            }
+        } catch {
+            Write-Info "vswhere detection failed: $($_.Exception.Message)"
+        }
+    }
+
+    if (@($installs).Count -eq 0) {
+        # Legacy fallback when vswhere is unavailable
+        $legacyPaths = @(
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise"
+        )
+
+        foreach ($legacyPath in $legacyPaths) {
+            if (Test-Path $legacyPath) {
+                $vcvars = Join-Path $legacyPath "VC\Auxiliary\Build\vcvars64.bat"
+                $version = if ($legacyPath -match "\\(2019|2022)\\") { $matches[1] } else { "Unknown" }
+                $installs += @{
+                    Path = $legacyPath
+                    Version = $version
+                    Product = $version
+                    InstanceId = $legacyPath
+                    VcVars = $vcvars
+                }
+            }
+        }
+    }
+
+    return @($installs | Sort-Object {
+        try { [version]$_.Version } catch { [version]"0.0" }
+    } -Descending)
+}
+
+function Find-VcVars64 {
+    $installs = Get-VisualStudioInstallations
+
+    foreach ($install in $installs) {
+        if (Test-Path $install.VcVars) {
+            return $install.VcVars
+        }
+    }
+
     return $null
 }
 
@@ -160,25 +231,27 @@ function Find-BootstrapPython {
     return $found | Sort-Object { $_.Minor } -Descending
 }
 
-function Test-VisualStudio2019 {
-    $vsPaths = @(
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"
-    )
-    
-    foreach ($path in $vsPaths) {
-        if (Test-Path $path) {
-            return @{
-                Installed = $true
-                Path = $path
-            }
+function Test-VisualStudio {
+    $installs = Get-VisualStudioInstallations
+    $supported = @($installs | Where-Object { $_.Product -in @("2019", "2022") })
+    $selected = $supported | Select-Object -First 1
+
+    if ($selected) {
+        return @{
+            Installed = $true
+            Path = $selected.Path
+            Version = $selected.Version
+            Product = $selected.Product
+            SupportedProducts = @("2019", "2022")
         }
     }
-    
+
     return @{
         Installed = $false
         Path = $null
+        Version = $null
+        Product = $null
+        SupportedProducts = @("2019", "2022")
     }
 }
 
@@ -186,46 +259,40 @@ function Test-MSVCToolchains {
     $required = @("x64", "x86", "ARM64")
     $found = @()
     $missing = @()
-    
-    # Check each VS edition separately (same approach as Test-VisualStudio2019)
-    $vsPaths = @(
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"
-    )
-    
+
     $toolchainDirs = @()
-    foreach ($vsPath in $vsPaths) {
-        if (Test-Path $vsPath) {
-            $vcToolsPath = Join-Path $vsPath "VC\Tools\MSVC"
-            if (Test-Path $vcToolsPath) {
-                $dirs = Get-ChildItem -Path $vcToolsPath -ErrorAction SilentlyContinue -Directory | Where-Object { 
-                    # Match version patterns like 14.29, 14.29.30133, etc.
-                    $_.Name -match '^\d+\.\d+' 
+    foreach ($install in (Get-VisualStudioInstallations)) {
+        $vcToolsPath = Join-Path $install.Path "VC\Tools\MSVC"
+        if (Test-Path $vcToolsPath) {
+            try {
+                $dirs = Get-ChildItem -Path $vcToolsPath -ErrorAction SilentlyContinue -Directory | Where-Object {
+                    $_.Name -match '^\d+\.\d+'
                 }
                 if ($dirs) {
                     $toolchainDirs += $dirs
                 }
+            } catch {
+                Write-Info "Toolchain discovery failed for '$vcToolsPath': $($_.Exception.Message)"
             }
         }
     }
-    
+
     if ($toolchainDirs) {
-        $latestToolchain = $toolchainDirs | Sort-Object { 
+        $latestToolchain = $toolchainDirs | Sort-Object {
             try {
                 [version]$_.Name
             } catch {
                 [version]"0.0"
             }
         } -Descending | Select-Object -First 1
-        
+
         $binPath = Join-Path $latestToolchain.FullName "bin\Hostx64"
-        
+
         foreach ($arch in $required) {
             $archPath = Join-Path $binPath "x64"
             if ($arch -eq "x86") { $archPath = Join-Path $binPath "x86" }
             if ($arch -eq "ARM64") { $archPath = Join-Path $binPath "arm64" }
-            
+
             $clPath = Join-Path $archPath "cl.exe"
             if (Test-Path $clPath) {
                 $found += $arch
@@ -234,14 +301,91 @@ function Test-MSVCToolchains {
             }
         }
     } else {
-        # No toolchain directories found - all toolchains are missing
         $missing = $required
     }
-    
+
     return @{
         Found = $found
         Missing = $missing
         AllPresent = ($missing.Count -eq 0)
+    }
+}
+
+function Test-Git {
+    try {
+        $gitCmd = Get-Command git -ErrorAction Stop
+        $versionOutput = & git --version 2>&1
+        $version = ($versionOutput | Out-String).Trim()
+        return @{
+            Installed = $true
+            Version = $version
+            Path = $gitCmd.Path
+        }
+    } catch {
+        return @{
+            Installed = $false
+            Version = $null
+            Path = $null
+        }
+    }
+}
+
+function Test-SafePathInput {
+    param(
+        [string]$Value,
+        [string]$FieldName,
+        [switch]$RequireExistingPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @{ IsValid = $false; Error = "$FieldName is required" }
+    }
+
+    # Conservative allow-list to block cmd/powershell metacharacters.
+    if ($Value -notmatch '^[a-zA-Z0-9_ .:\\()\-]+$') {
+        return @{ IsValid = $false; Error = "$FieldName contains invalid characters" }
+    }
+
+    if ($RequireExistingPath -and -not (Test-Path $Value)) {
+        return @{ IsValid = $false; Error = "$FieldName does not exist: $Value" }
+    }
+
+    return @{ IsValid = $true; Error = $null }
+}
+
+function Test-SafeSimpleName {
+    param(
+        [string]$Value,
+        [string]$FieldName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @{ IsValid = $false; Error = "$FieldName is required" }
+    }
+
+    # Allow dots for names like "doc-venv3.10", but block traversal patterns.
+    if ($Value -notmatch '^(?!.*\.\.)[a-zA-Z0-9_.-]{1,64}$') {
+        return @{ IsValid = $false; Error = "$FieldName must match ^(?!.*\.\.)[a-zA-Z0-9_.-]{1,64}$" }
+    }
+
+    return @{ IsValid = $true; Error = $null }
+}
+
+function Cleanup-BuildStatus {
+    $threshold = (Get-Date).AddHours(-$script:BuildStatusTtlHours)
+    foreach ($id in @($script:BuildStatus.Keys)) {
+        $entry = $script:BuildStatus[$id]
+        if (-not $entry) {
+            $script:BuildStatus.Remove($id) | Out-Null
+            continue
+        }
+
+        if ($entry.StartTime -lt $threshold) {
+            if ($entry.StatusFile -and (Test-Path $entry.StatusFile)) {
+                Remove-Item -Path $entry.StatusFile -Force -ErrorAction SilentlyContinue
+            }
+            $script:BuildStatus.Remove($id) | Out-Null
+        }
     }
 }
 
@@ -285,15 +429,19 @@ function Test-WindowsSDK {
 function Invoke-PrerequisitesHandler {
     param([System.Net.HttpListenerContext]$Context)
     
-    $vs = Test-VisualStudio2019
+    $vs = Test-VisualStudio
     $toolchains = Test-MSVCToolchains
     $sdk = Test-WindowsSDK
     $python = Find-BootstrapPython
+    $git = Test-Git
     
     $result = @{
         VisualStudio = @{
             Installed = $vs.Installed
             Path = if ($vs.Installed) { $vs.Path } else { $null }
+            Version = $vs.Version
+            Product = $vs.Product
+            SupportedProducts = $vs.SupportedProducts
         }
         MSVCToolchains = @{
             AllPresent = $toolchains.AllPresent
@@ -310,7 +458,12 @@ function Invoke-PrerequisitesHandler {
             Found = ($python.Count -gt 0)
             Versions = @($python | ForEach-Object { @{ Path = $_.Path; Version = $_.Version } })
         }
-        AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0))
+        Git = @{
+            Installed = $git.Installed
+            Version = $git.Version
+            Path = $git.Path
+        }
+        AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0) -and $git.Installed)
     }
     
     Write-Host "[DEBUG] Bootstrap Python result: Found=$($result.BootstrapPython.Found), Versions count=$($result.BootstrapPython.Versions.Count)" -ForegroundColor Cyan
@@ -575,41 +728,99 @@ function Invoke-SetupVenvHandler {
 
 function Invoke-BuildHandler {
     param([System.Net.HttpListenerContext]$Context)
-    
-    $body = Get-RequestBody -Context $Context
-    $data = $body | ConvertFrom-Json
-    
-    # Validate
-    if ([string]::IsNullOrWhiteSpace($data.SourcePath)) {
-        Send-JsonResponse -Context $Context -Data @{ Success = $false; Error = "SourcePath is required" } -StatusCode 400
+    Cleanup-BuildStatus
+
+    try {
+        $body = Get-RequestBody -Context $Context
+        $data = $body | ConvertFrom-Json
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = "Invalid JSON payload"
+        } -StatusCode 400
         return
     }
-    
-    if ([string]::IsNullOrWhiteSpace($data.BootstrapPython)) {
-        Send-JsonResponse -Context $Context -Data @{ Success = $false; Error = "BootstrapPython is required" } -StatusCode 400
+
+    $sourcePathValidation = Test-SafePathInput -Value $data.SourcePath -FieldName "SourcePath" -RequireExistingPath
+    if (-not $sourcePathValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = $sourcePathValidation.Error
+        } -StatusCode 400
         return
     }
-    
-    # Find vcvars64.bat
+
+    $bootstrapValidation = Test-SafePathInput -Value $data.BootstrapPython -FieldName "BootstrapPython" -RequireExistingPath
+    if (-not $bootstrapValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = $bootstrapValidation.Error
+        } -StatusCode 400
+        return
+    }
+
+    $venvName = if ($data.VenvName) { $data.VenvName } else { "doc-venv" }
+    $venvValidation = Test-SafeSimpleName -Value $venvName -FieldName "VenvName"
+    if (-not $venvValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = $venvValidation.Error
+        } -StatusCode 400
+        return
+    }
+
+    $releaseRoot = if ($data.ReleaseRoot) { $data.ReleaseRoot } else { "C:\python-releases" }
+    $releaseRootValidation = Test-SafePathInput -Value $releaseRoot -FieldName "ReleaseRoot"
+    if (-not $releaseRootValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = $releaseRootValidation.Error
+        } -StatusCode 400
+        return
+    }
+
+    $winSdkVersion = if ($data.WinSdkVersion) { $data.WinSdkVersion } else { "10.0.19041.0" }
+    if ($winSdkVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "VALIDATION_ERROR"
+            Error = "WinSdkVersion must be in the format 10.0.19041.0"
+        } -StatusCode 400
+        return
+    }
+
     $vcvarsPath = Find-VcVars64
     if (-not $vcvarsPath) {
-        Send-JsonResponse -Context $Context -Data @{ Success = $false; Error = "Visual Studio 2019 not found" } -StatusCode 400
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "BUILD_START_ERROR"
+            Error = "Visual Studio C++ build tools (2019/2022) not found"
+        } -StatusCode 400
         return
     }
-    
-    # Create a simple batch file that opens a new window and runs the build
+
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $buildId = [guid]::NewGuid().ToString()
     $batchFile = Join-Path $env:TEMP "python-build-$timestamp.bat"
     $statusFile = Join-Path $env:TEMP "python-build-status-$buildId.txt"
-    
-    # Store build status
+    $logsDir = Join-Path $PSScriptRoot "..\logs"
+    if (-not (Test-Path $logsDir)) {
+        New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    }
+    $logPath = Join-Path $logsDir "build-$buildId.log"
+
     $script:BuildStatus[$buildId] = @{
         Status = "running"
         StartTime = Get-Date
         StatusFile = $statusFile
+        LogPath = $logPath
     }
-    
+
     $batchContent = @"
 @echo off
 title Python Build - %TIME%
@@ -632,7 +843,7 @@ echo Visual Studio environment ready
 echo.
 echo Starting build...
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '$BuildScriptPath' -SourcePath '$($data.SourcePath)' -BootstrapPython '$($data.BootstrapPython)' -VenvName '$($data.VenvName)' -ReleaseRoot '$($data.ReleaseRoot)' -WinSdkVersion '$($data.WinSdkVersion)'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$BuildScriptPath" -SourcePath "$($data.SourcePath)" -BootstrapPython "$($data.BootstrapPython)" -VenvName "$venvName" -ReleaseRoot "$releaseRoot" -WinSdkVersion "$winSdkVersion" -BuildId "$buildId" -LogPath "$logPath"
 echo.
 if errorlevel 1 (
     echo ========================================
@@ -649,16 +860,24 @@ echo.
 echo Press any key to close this window...
 pause >nul
 "@
-    
-    Set-Content -Path $batchFile -Value $batchContent -Encoding ASCII
-    
-    # Start the build in a new window
-    Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "`"$batchFile`"")
-    
-    Send-JsonResponse -Context $Context -Data @{ 
+
+    try {
+        Set-Content -Path $batchFile -Value $batchContent -Encoding ASCII
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "`"$batchFile`"")
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Code = "BUILD_START_ERROR"
+            Error = "Failed to start build: $($_.Exception.Message)"
+        } -StatusCode 500
+        return
+    }
+
+    Send-JsonResponse -Context $Context -Data @{
         Success = $true
         Message = "Build started in new window"
         BuildId = $buildId
+        LogPath = $logPath
     }
 }
 
@@ -667,7 +886,9 @@ function Invoke-BuildStatusHandler {
         [System.Net.HttpListenerContext]$Context,
         [string]$BuildId
     )
-    
+
+    Cleanup-BuildStatus
+
     if (-not $script:BuildStatus.ContainsKey($BuildId)) {
         Send-JsonResponse -Context $Context -Data @{ 
             Status = "unknown"
@@ -679,6 +900,16 @@ function Invoke-BuildStatusHandler {
     $buildInfo = $script:BuildStatus[$BuildId]
     $statusFile = $buildInfo.StatusFile
     
+    $logPath = $buildInfo.LogPath
+    $lastErrorSnippet = $null
+    if ($logPath -and (Test-Path $logPath)) {
+        try {
+            $lastErrorSnippet = Get-Content -Path $logPath -Tail 100 | Select-String -Pattern 'FAIL|ERROR' | Select-Object -Last 1 | ForEach-Object { $_.Line }
+        } catch {
+            $lastErrorSnippet = $null
+        }
+    }
+
     if (Test-Path $statusFile) {
         $status = Get-Content $statusFile -Raw
         $status = $status.Trim()
@@ -688,11 +919,15 @@ function Invoke-BuildStatusHandler {
         Send-JsonResponse -Context $Context -Data @{
             Status = $status
             Message = if ($status -eq "success") { "Build completed successfully" } else { "Build failed" }
+            LogPath = $logPath
+            LastErrorSnippet = $lastErrorSnippet
         }
     } else {
         Send-JsonResponse -Context $Context -Data @{
             Status = "running"
             Message = "Build is still running"
+            LogPath = $logPath
+            LastErrorSnippet = $lastErrorSnippet
         }
     }
 }
@@ -1141,7 +1376,8 @@ function Get-HtmlUI {
                     btn.textContent = 'Build Failed';
                     btn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
                     btn.disabled = false;
-                    showAlert('Build failed. Check terminal window for details.', 'error');
+                    const extraError = data.LastErrorSnippet ? (' Last error: ' + data.LastErrorSnippet) : '';
+                    showAlert('Build failed. Check terminal window/log for details.' + extraError, 'error');
                     clearInterval(buildStatusInterval);
                     buildStatusInterval = null;
                     currentBuildId = null;
@@ -1199,7 +1435,8 @@ function Get-HtmlUI {
                     }
                     buildStatusInterval = setInterval(() => checkBuildStatus(currentBuildId), 2000);
                 } else {
-                    showAlert('Failed to start build: ' + data.Error, 'error');
+                    const errorCode = data.Code ? (' [' + data.Code + ']') : '';
+                    showAlert('Failed to start build' + errorCode + ': ' + data.Error, 'error');
                     btn.disabled = false;
                     btn.textContent = 'Start Build (Opens New Window)';
                     btn.style.background = '';
@@ -1232,13 +1469,15 @@ function Get-HtmlUI {
                 // Visual Studio
                 const vsStatus = data.VisualStudio.Installed ? 'ready' : 'not-ready';
                 const vsIcon = data.VisualStudio.Installed ? 'ready' : 'not-ready';
-                const vsPath = data.VisualStudio.Installed ? (data.VisualStudio.Path || 'Installed') : 'Not Found';
+                const vsPath = data.VisualStudio.Installed
+                    ? ((data.VisualStudio.Path || 'Installed') + (data.VisualStudio.Version ? (' (v' + data.VisualStudio.Version + ')') : ''))
+                    : 'Not Found';
                 let vsHelpLink = '';
                 if (!data.VisualStudio.Installed) {
                     vsHelpLink = '<a href="/api/docs/setup_visual_studio" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + vsStatus + '">' +
-                    '<div><span class="status-icon ' + vsIcon + '"></span><strong>Visual Studio 2019</strong></div>' +
+                    '<div><span class="status-icon ' + vsIcon + '"></span><strong>Visual Studio (2019/2022)</strong></div>' +
                     '<div>' + vsPath + vsHelpLink + '</div>' +
                     '</div>';
                 
@@ -1287,6 +1526,19 @@ function Get-HtmlUI {
                     '<div><span class="status-icon ' + pythonIcon + '"></span><strong>Bootstrap Python (3.10/3.12)</strong></div>' +
                     '<div>' + pythonMsg + pythonHelpLink + '</div>' +
                     '</div>';
+
+                // Git for Windows
+                const gitStatus = data.Git.Installed ? 'ready' : 'not-ready';
+                const gitIcon = data.Git.Installed ? 'ready' : 'not-ready';
+                const gitMsg = data.Git.Installed ? (data.Git.Version || 'Installed') : 'Not Found';
+                let gitHelpLink = '';
+                if (!data.Git.Installed) {
+                    gitHelpLink = '<a href="/api/docs/setup_git" target="_blank" class="help-link">Setup Guide</a>';
+                }
+                html += '<div class="prereq-item ' + gitStatus + '">' +
+                    '<div><span class="status-icon ' + gitIcon + '"></span><strong>Git for Windows</strong></div>' +
+                    '<div>' + gitMsg + gitHelpLink + '</div>' +
+                    '</div>';
                 
                 if (data.AllReady) {
                     html += '<div class="alert alert-success" style="margin-top: 15px;">All prerequisites are ready! You can proceed with the build.</div>';
@@ -1332,6 +1584,8 @@ function Start-WebServer {
         
         while ($listener.IsListening) {
             try {
+                Cleanup-BuildStatus
+
                 # Start async operation if not already started
                 if ($null -eq $asyncResult) {
                     $asyncResult = $listener.BeginGetContext($null, $null)

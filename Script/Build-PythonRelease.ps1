@@ -17,14 +17,46 @@ param(
 
     # Optional progress callback scriptblock for UI integration
     # Callback receives: [string]$Type ("info", "ok", "error", "step"), [string]$Message
-    [scriptblock]$ProgressCallback = $null
+    [scriptblock]$ProgressCallback = $null,
+
+    # Optional build correlation id from UI
+    [string]$BuildId = "",
+
+    # Optional log file path
+    [string]$LogPath = ""
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 $script:BuildError = $null
+$script:LogPath = $LogPath
+$script:BuildStart = Get-Date
+
+function Write-Log {
+    param(
+        [string]$Level,
+        [string]$Message
+    )
+
+    if ([string]::IsNullOrWhiteSpace($script:LogPath)) {
+        return
+    }
+
+    try {
+        $logDir = Split-Path -Parent $script:LogPath
+        if ($logDir -and -not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+        }
+
+        $entry = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
+        Add-Content -Path $script:LogPath -Value $entry -Encoding UTF8
+    } catch {
+        # Logging must not break the build.
+    }
+}
 
 function Write-Info($msg) {
     Write-Host "[INFO ] $msg" -ForegroundColor Cyan
+    Write-Log -Level "INFO" -Message $msg
     if ($ProgressCallback) {
         & $ProgressCallback "info" $msg
     }
@@ -32,6 +64,7 @@ function Write-Info($msg) {
 
 function Write-Ok($msg) {
     Write-Host "[ OK  ] $msg" -ForegroundColor Green
+    Write-Log -Level "OK" -Message $msg
     if ($ProgressCallback) {
         & $ProgressCallback "ok" $msg
     }
@@ -39,7 +72,7 @@ function Write-Ok($msg) {
 
 function Write-Err($msg) {
     Write-Host "[FAIL] $msg" -ForegroundColor Red
-    Write-Error $msg -ErrorAction Continue
+    Write-Log -Level "FAIL" -Message $msg
     if ($ProgressCallback) {
         & $ProgressCallback "error" $msg
     }
@@ -48,9 +81,22 @@ function Write-Err($msg) {
 
 function Write-Step($msg) {
     Write-Host "[STEP ] $msg" -ForegroundColor Yellow
+    Write-Log -Level "STEP" -Message $msg
     if ($ProgressCallback) {
         & $ProgressCallback "step" $msg
     }
+}
+
+trap {
+    $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+    Write-Err "Unhandled error: $errMsg"
+    $duration = (Get-Date) - $script:BuildStart
+    $failureMeta = @{
+        result = "failed"
+        durationSeconds = [int]$duration.TotalSeconds
+    } | ConvertTo-Json -Compress
+    Write-Log -Level "META" -Message $failureMeta
+    exit 1
 }
 
 # --- Resolve paths -----------------------------------------------------------
@@ -105,6 +151,50 @@ Write-Info "PCbuild path      : $PcbuildPath"
 Write-Info "MSI tools path    : $MsiToolsPath"
 Write-Info "Doc venv path     : $VenvPath"
 Write-Info "Bootstrap Python  : $BootstrapPython"
+if ($BuildId) {
+    Write-Info "Build ID          : $BuildId"
+}
+if ($script:LogPath) {
+    Write-Info "Log path          : $script:LogPath"
+}
+
+$commitHash = ""
+try {
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $commitHash = (& git -C $PSScriptRoot rev-parse --short HEAD 2>$null).Trim()
+    }
+} catch {
+    $commitHash = ""
+}
+
+$bootstrapVersion = ""
+try {
+    $bootstrapVersion = (& $BootstrapPython --version 2>&1 | Out-String).Trim()
+} catch {
+    $bootstrapVersion = ""
+}
+
+$msvcInfo = ""
+try {
+    $clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+    if ($clCmd) {
+        $msvcInfo = $clCmd.Source
+    }
+} catch {
+    $msvcInfo = ""
+}
+
+$fingerprint = @{
+    BuildId = $BuildId
+    StartTime = (Get-Date).ToString("o")
+    SourcePath = $SourcePath
+    BootstrapPython = $BootstrapPython
+    BootstrapVersion = $bootstrapVersion
+    WinSdkVersion = $WinSdkVersion
+    MsvcToolset = $msvcInfo
+    ScriptCommit = $commitHash
+}
+Write-Log -Level "META" -Message (($fingerprint | ConvertTo-Json -Compress))
 
 # --- Activate venv -----------------------------------------------------------
 
@@ -239,9 +329,15 @@ function Invoke-Cmd {
                     $cmdArgs += $Arguments
                 }
                 
-                # Execute using call operator with output redirection
-                # This allows real-time output display
-                $output = & $env:COMSPEC $cmdArgs 2>&1
+                # Execute batch command and capture all output.
+                # Keep native stderr as log output instead of promoting warnings to terminating errors.
+                $previousErrorActionPreference = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                try {
+                    $output = & $env:COMSPEC $cmdArgs 2>&1
+                } finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
                 
                 # Check exit code using $LASTEXITCODE (more reliable than $? for native commands)
                 $exitCode = $LASTEXITCODE
@@ -262,6 +358,11 @@ function Invoke-Cmd {
                 }
                 
                 Write-Ok "Command completed: $Command"
+                return @{
+                    ExitCode = 0
+                    Output = ""
+                    ErrorOutput = ""
+                }
             } catch {
                 Write-Err "Error executing batch file: $($_.Exception.Message)"
                 throw
@@ -365,6 +466,11 @@ function Invoke-Cmd {
             }
             
             Write-Ok "Command completed: $Command"
+            return @{
+                ExitCode = $process.ExitCode
+                Output = $output
+                ErrorOutput = $errorOutput
+            }
         }
     } catch {
         Write-Err "Error executing command: $($_.Exception.Message)"
@@ -400,7 +506,13 @@ Invoke-Cmd -Command "$MsiToolsPath\get_externals.bat" -Arguments @() -WorkingDir
 # --- Step 4: Tools\msi\buildrelease.bat -x64 --------------------------------
 
 Write-Step "Step 4/4: Building Windows installer..."
-Invoke-Cmd -Command "$MsiToolsPath\buildrelease.bat" -Arguments @("-x64") -WorkingDirectory $SourcePath
+$msiBuildResult = Invoke-Cmd -Command "$MsiToolsPath\buildrelease.bat" -Arguments @("-x64") -WorkingDirectory $SourcePath
+$msiBuildOutput = "$($msiBuildResult.Output)`n$($msiBuildResult.ErrorOutput)"
+if ($msiBuildOutput -match '(?im)^\s*Build FAILED\.' -or $msiBuildOutput -match '(?im):\s*error\s+[A-Z]{3}\d{4}\s*:') {
+    $errorMsg = "MSI build reported failure output even though buildrelease.bat returned success. Check log output from Step 4 for details."
+    Write-Err $errorMsg
+    throw $errorMsg
+}
 
 # --- Step 5: Collect artefacts ----------------------------------------------
 
@@ -453,3 +565,9 @@ Write-Info "Release zip    : $zipPath"
 if ($pythonVersion) {
     Write-Info "Built Python   : $pythonVersion"
 }
+$duration = (Get-Date) - $script:BuildStart
+$successMeta = @{
+    result = "success"
+    durationSeconds = [int]$duration.TotalSeconds
+} | ConvertTo-Json -Compress
+Write-Log -Level "META" -Message $successMeta

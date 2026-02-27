@@ -77,6 +77,7 @@ Then open your browser to `http://localhost:8080`
 
 **Web UI Features:**
 - ✅ **Automated Prerequisites Checker** - Verifies Visual Studio, Windows SDK, and Bootstrap Python
+- ✅ **Git Detection** - Verifies Git for Windows is installed and available on PATH
 - 📚 **Interactive Documentation Viewer** - Access setup guides directly from the UI
 - 🔧 **Build Configuration** - Configure build parameters through a web interface
 - 📊 **Real-time Build Status** - Monitor build progress and logs
