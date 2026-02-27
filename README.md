@@ -97,6 +97,13 @@ The documentation guides are rendered as formatted HTML with proper styling for 
 
 All documentation is accessible through the web UI at `/api/docs/<guide-name>` or directly from the `documentation/` folder.
 
+### Release Operations
+
+- **[Release Runbook](documentation/release_runbook.md)** - End-to-end operational flow for source download, verification, build, and evidence capture
+- **[Release Record Template](documentation/release_record_template.md)** - Reusable template for recording each release run
+- **[Session Notes (2026-02-27)](documentation/session_notes_2026-02-27.md)** - Summary of recent troubleshooting and release preparation
+- **[PSUB Release Ops Skill](skills/psub-release-ops/SKILL.md)** - Local skill for repeatable release checks, downloads, builds, and troubleshooting
+
 ## 🎯 Output
 
 The build process generates:
