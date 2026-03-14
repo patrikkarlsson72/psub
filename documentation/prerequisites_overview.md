@@ -16,6 +16,8 @@ Before starting a build, ensure you have:
 - `.NET Framework 3.5` (includes .NET 2.0 and 3.0, required for legacy WiX/MSI flows such as Python 3.10)
 - `CPython source code` (extracted to a local directory)
 
+PSUB can use a newer installed Windows SDK automatically when the older minimum version is not present.
+
 ## Detailed Setup Guides
 
 For detailed installation instructions, see:
@@ -56,6 +58,8 @@ The PSUB web UI prerequisites checker should verify:
 
 Note: Git detection is automated in the UI and included in the overall readiness check.
 
+Note: The UI should also prefill the detected Windows SDK version in build settings, rather than always leaving the legacy minimum value in the input.
+
 If any prerequisites are missing, the UI will show help links to relevant setup guides.
 
 ## System Requirements
@@ -85,6 +89,7 @@ If you encounter issues:
 2. Review "Common Issues" in each guide
 3. Verify all components are installed in expected locations
 4. Ensure you are using supported versions (VS 2022/2019, Python 3.10/3.12)
+5. For Python 3.10 builds, ensure the documentation/CHM path can complete so `doc.msi` is generated
 
 ## Next Steps
 

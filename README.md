@@ -52,10 +52,12 @@ PSUB/
   - Python development workload (optional)
   - MSVC toolsets for x64/x86 and ARM64
   - Visual Studio 2019 remains supported as a fallback
-- Windows 10 SDK (10.0.19041.0)
+- Windows 10 SDK (10.0.19041.0 or later)
 - Bootstrap Python (3.10 or 3.12)
 - Git for Windows (required for MSI installer build)
 - .NET Framework 3.5 (includes .NET 2.0 and 3.0), required for legacy WiX/MSI builds (notably Python 3.10)
+
+PSUB prefers the requested SDK version when it is installed, but will automatically fall forward to a compatible installed Windows SDK version when needed. In the web UI, the detected SDK version is used to prefill the build setting.
 
 ### Basic Usage
 
@@ -86,6 +88,8 @@ Then open your browser to `http://localhost:8080`
 
 The documentation guides are rendered as formatted HTML with proper styling for easy reading.
 
+For Python 3.10 release builds, PSUB also prepares the compiled HTML Help (`.chm`) documentation before the MSI packaging step so that `doc.msi` can be produced reliably on a fresh machine.
+
 ## 📚 Documentation
 
 ### Available Guides
@@ -112,6 +116,7 @@ The build process generates:
 - `python-<version>-amd64.exe` - Main installer
 - `core.msi`, `pip.msi`, `path.msi`, `tcltk.msi`, `dev.msi`, `doc.msi` - Component installers
 - `python-<version>-embed-amd64.zip` - Embeddable distribution
+- `Python-<version>_<timestamp>.zip` - PSUB archive of the collected release output under `C:\python-releases`
 
 ## 🛠️ Supported Python Versions
 

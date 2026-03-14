@@ -21,7 +21,8 @@ If you must use Visual Studio 2019 instead, install the equivalent `v142` compon
 > WiX 3.14 requires ARM64 toolchains even when building x64 installers.
 
 ## Windows SDK
-- Windows 10 SDK (10.0.19041.0)
+- Windows 10 SDK (10.0.19041.0 or later)
+- If your machine has a newer installed SDK, for example `10.0.26100.0`, PSUB can use that version
 
 ## Python for bootstrap
 Install:
@@ -85,8 +86,15 @@ Set environment variables:
 ```bat
 set PYTHON="C:\Users\<User>\AppData\Local\Programs\Python\Python312\python.exe"
 set SPHINXBUILD=%CD%\doc-venv\Scripts\sphinx-build.exe
-set WindowsTargetPlatformVersion=10.0.19041.0
-set WindowsSDKVersion=10.0.19041.0\
+set WindowsTargetPlatformVersion=<installed-sdk-version>
+set WindowsSDKVersion=<installed-sdk-version>\
+```
+
+Example on a current machine:
+
+```bat
+set WindowsTargetPlatformVersion=10.0.26100.0
+set WindowsSDKVersion=10.0.26100.0\
 ```
 
 Download external MSI dependencies:
@@ -100,6 +108,8 @@ Build installer:
 ```bat
 Tools\msi\buildrelease.bat -x64
 ```
+
+For `Python 3.10.x`, make sure the HTML Help documentation build succeeds so that `doc.msi` can be packaged. In PSUB this is now handled automatically before the MSI packaging step.
 
 ---
 
@@ -121,6 +131,7 @@ Included:
 - dev.msi  
 - doc.msi  
 - python-<version>-embed-amd64.zip  
+- Python-<version>_<timestamp>.zip  (when collected by PSUB into `C:\python-releases`)
 
 ---
 
@@ -139,6 +150,14 @@ Tools\msi\get_externals.bat
 ```
 pip install -r Doc\requirements.txt
 ```
+
+### Python 3.10 doc/CHM errors
+If `doc.msi` fails because `python31020.chm` or a similar `.chm` file is missing:
+```
+Tools\msi\get_externals.bat
+Doc\make.bat htmlhelp
+```
+PSUB now automates this path and also pins a compatible setuptools version in the documentation venv when older Sphinx requires `pkg_resources`.
 
 ### Wrong compiler/toolset
 Preferred:

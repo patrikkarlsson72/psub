@@ -100,6 +100,16 @@ trap {
     exit 1
 }
 
+function Test-IsWindowsAppsPythonAlias {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    return ($Path -match '(?i)\\AppData\\Local\\Microsoft\\WindowsApps\\python(?:3(?:\.\d+)?)?\.exe$')
+}
+
 function Get-VsWherePath {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
@@ -113,6 +123,52 @@ function Get-VsWherePath {
     }
 
     return $null
+}
+
+function Get-InstalledWindowsSdkVersions {
+    $sdkPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+    if (-not (Test-Path $sdkPath)) {
+        return @()
+    }
+
+    try {
+        return @(
+            Get-ChildItem -Path $sdkPath -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+                Sort-Object {
+                    try { [version]$_.Name } catch { [version]"0.0" }
+                } -Descending |
+                ForEach-Object { $_.Name }
+        )
+    } catch {
+        return @()
+    }
+}
+
+function Resolve-WindowsSdkVersion {
+    param([string]$RequestedVersion)
+
+    $installedVersions = @(Get-InstalledWindowsSdkVersions)
+    if ($installedVersions.Count -eq 0) {
+        return $RequestedVersion
+    }
+
+    if ($RequestedVersion -and ($installedVersions -contains $RequestedVersion)) {
+        return $RequestedVersion
+    }
+
+    if ($RequestedVersion) {
+        try {
+            $fallback = $installedVersions | Where-Object { [version]$_ -ge [version]$RequestedVersion } | Select-Object -First 1
+            if ($fallback) {
+                return $fallback
+            }
+        } catch {
+            # Ignore version parsing issues and fall back to latest installed.
+        }
+    }
+
+    return $installedVersions[0]
 }
 
 function Get-VisualStudioInstallations {
@@ -307,6 +363,11 @@ if (-not (Test-Path $BootstrapPython)) {
     Write-Err $errorMsg
     throw $errorMsg
 }
+if (Test-IsWindowsAppsPythonAlias -Path $BootstrapPython) {
+    $errorMsg = "Bootstrap Python path '$BootstrapPython' points to the WindowsApps alias. Install Python 3.12 or 3.10 from python.org and use the real python.exe path."
+    Write-Err $errorMsg
+    throw $errorMsg
+}
 if (-not (Test-Path $VenvPath)) {
     $errorMsg = "Venv '$VenvName' not found at '$VenvPath' (create it with: python -m venv $VenvName)"
     Write-Err $errorMsg
@@ -321,6 +382,12 @@ if (-not $visualStudioInstall) {
 }
 
 Import-VisualStudioEnvironment -Install $visualStudioInstall
+
+$resolvedWinSdkVersion = Resolve-WindowsSdkVersion -RequestedVersion $WinSdkVersion
+if ($resolvedWinSdkVersion -ne $WinSdkVersion) {
+    Write-Info "Requested Windows SDK '$WinSdkVersion' not found. Using '$resolvedWinSdkVersion' instead."
+    $WinSdkVersion = $resolvedWinSdkVersion
+}
 
 Write-Info "Source path       : $SourcePath"
 Write-Info "PCbuild path      : $PcbuildPath"
@@ -348,6 +415,11 @@ try {
     $bootstrapVersion = (& $BootstrapPython --version 2>&1 | Out-String).Trim()
 } catch {
     $bootstrapVersion = ""
+}
+if (-not $bootstrapVersion) {
+    $errorMsg = "Bootstrap Python could not be executed at '$BootstrapPython'. Use a real python.exe from a python.org installation, not a WindowsApps alias."
+    Write-Err $errorMsg
+    throw $errorMsg
 }
 
 $msvcInfo = ""
@@ -658,6 +730,126 @@ function Invoke-Cmd {
     }
 }
 
+function Get-ExpectedDocHelpFilename {
+    param([string]$SourceRoot)
+
+    $patchlevelPath = Join-Path $SourceRoot "Include\patchlevel.h"
+    if (-not (Test-Path $patchlevelPath)) {
+        return $null
+    }
+
+    $content = Get-Content $patchlevelPath -Raw
+    $major = ([regex]::Match($content, '#define\s+PY_MAJOR_VERSION\s+(\d+)')).Groups[1].Value
+    $minor = ([regex]::Match($content, '#define\s+PY_MINOR_VERSION\s+(\d+)')).Groups[1].Value
+    $micro = ([regex]::Match($content, '#define\s+PY_MICRO_VERSION\s+(\d+)')).Groups[1].Value
+    $level = ([regex]::Match($content, '#define\s+PY_RELEASE_LEVEL\s+(PY_RELEASE_LEVEL_[A-Z]+)')).Groups[1].Value
+    $serial = ([regex]::Match($content, '#define\s+PY_RELEASE_SERIAL\s+(\d+)')).Groups[1].Value
+
+    if (-not $major -or -not $minor -or -not $micro) {
+        return $null
+    }
+
+    $suffix = switch ($level) {
+        "PY_RELEASE_LEVEL_ALPHA" { "a$serial" }
+        "PY_RELEASE_LEVEL_BETA" { "b$serial" }
+        "PY_RELEASE_LEVEL_GAMMA" { "rc$serial" }
+        default { "" }
+    }
+
+    return "python$major$minor$micro$suffix.chm"
+}
+
+function Ensure-DocBuildCompatibility {
+    param(
+        [string]$VenvRoot,
+        [string]$PipExecutable
+    )
+
+    $venvPython = Join-Path $VenvRoot "Scripts\python.exe"
+    if (-not (Test-Path $venvPython)) {
+        $errorMsg = "Venv Python not found at '$venvPython'"
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    try {
+        & $venvPython -c "import pkg_resources" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+    } catch {
+        # Continue to compatibility install below.
+    }
+
+    Write-Info "pkg_resources is missing in the doc venv. Installing a setuptools version compatible with older Sphinx..."
+    $proc = Start-Process -FilePath $PipExecutable -ArgumentList @("install", "setuptools<81") -NoNewWindow -Wait -PassThru
+    if ($proc.ExitCode -ne 0) {
+        $errorMsg = "Failed to install compatible setuptools for documentation build (exit code: $($proc.ExitCode))."
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    try {
+        & $venvPython -c "import pkg_resources" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "pkg_resources still unavailable"
+        }
+    } catch {
+        $errorMsg = "pkg_resources is still unavailable after installing compatible setuptools."
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+}
+
+function Build-CompiledHtmlHelp {
+    param(
+        [string]$SourceRoot,
+        [string]$VenvRoot,
+        [string]$PipExecutable
+    )
+
+    $docPath = Join-Path $SourceRoot "Doc"
+    $hhcPath = Join-Path $SourceRoot "externals\windows-installer\htmlhelp\hhc.exe"
+    $docFilename = Get-ExpectedDocHelpFilename -SourceRoot $SourceRoot
+    if (-not $docFilename) {
+        $errorMsg = "Could not determine expected CHM documentation filename from Include\patchlevel.h."
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    $docOutputPath = Join-Path $docPath "build\htmlhelp\$docFilename"
+    if (Test-Path $docOutputPath) {
+        Write-Ok "Compiled HTML Help already available: $docOutputPath"
+        return $docOutputPath
+    }
+
+    if (-not (Test-Path $hhcPath)) {
+        $errorMsg = "HTML Help compiler not found at '$hhcPath'. Run Tools\\msi\\get_externals.bat or verify the htmlhelp external package."
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    Ensure-DocBuildCompatibility -VenvRoot $VenvRoot -PipExecutable $PipExecutable
+
+    Write-Step "Step 3.5/4: Building compiled HTML Help documentation..."
+    $previousHtmlHelp = $env:HTMLHELP
+    $env:HTMLHELP = $hhcPath
+    try {
+        Invoke-Cmd -Command "$docPath\make.bat" -Arguments @("htmlhelp") -WorkingDirectory $docPath
+    } finally {
+        $env:HTMLHELP = $previousHtmlHelp
+    }
+
+    if (-not (Test-Path $docOutputPath)) {
+        $errorMsg = "Expected compiled documentation was not created: '$docOutputPath'"
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    Write-Ok "Compiled HTML Help created: $docOutputPath"
+    return $docOutputPath
+}
+
 # --- Step 1: PCbuild\get_externals ------------------------------------------
 
 Write-Info "=== Starting Step 1: PCbuild\get_externals ==="
@@ -683,10 +875,12 @@ Invoke-Cmd -Command "$PcbuildPath\build.bat" -Arguments @("-p","x64","--pgo") -W
 Write-Step "Step 3/4: Downloading MSI externals..."
 Invoke-Cmd -Command "$MsiToolsPath\get_externals.bat" -Arguments @() -WorkingDirectory $MsiToolsPath
 
+$docHelpPath = Build-CompiledHtmlHelp -SourceRoot $SourcePath -VenvRoot $VenvPath -PipExecutable $PipPath
+
 # --- Step 4: Tools\msi\buildrelease.bat -x64 --------------------------------
 
 Write-Step "Step 4/4: Building Windows installer..."
-$msiBuildResult = Invoke-Cmd -Command "$MsiToolsPath\buildrelease.bat" -Arguments @("-x64") -WorkingDirectory $SourcePath
+$msiBuildResult = Invoke-Cmd -Command "$MsiToolsPath\buildrelease.bat" -Arguments @("-x64", "--skip-doc") -WorkingDirectory $SourcePath
 $msiBuildOutput = "$($msiBuildResult.Output)`n$($msiBuildResult.ErrorOutput)"
 if ($msiBuildOutput -match '(?im)^\s*Build FAILED\.' -or $msiBuildOutput -match '(?im):\s*error\s+[A-Z]{3}\d{4}\s*:') {
     $errorMsg = "MSI build reported failure output even though buildrelease.bat returned success. Check log output from Step 4 for details."
@@ -704,16 +898,34 @@ if (-not (Test-Path $OutDir)) {
     throw $errorMsg
 }
 
-$versionFile = Join-Path $PcbuildPath "python.exe"
 $pythonVersion = ""
+$versionCandidates = @(
+    (Join-Path $PcbuildPath "python.exe"),
+    (Join-Path $PcbuildPath "amd64\python.exe"),
+    (Join-Path $PcbuildPath "amd64\instrumented\python.exe")
+)
 
 try {
-    if (Test-Path $versionFile) {
+    foreach ($versionFile in $versionCandidates) {
+        if (-not (Test-Path $versionFile)) {
+            continue
+        }
+
         $out = & $versionFile -V 2>$null
-        $pythonVersion = $out.Trim()
+        if ($out) {
+            $pythonVersion = $out.Trim()
+            break
+        }
     }
 } catch {
     $pythonVersion = ""
+}
+
+if (-not $pythonVersion) {
+    $sourceLeaf = Split-Path -Leaf $SourcePath
+    if ($sourceLeaf -match '^Python-(\d+\.\d+\.\d+)$') {
+        $pythonVersion = "Python $($matches[1])"
+    }
 }
 
 if (-not (Test-Path $ReleaseRoot)) {
@@ -721,7 +933,12 @@ if (-not (Test-Path $ReleaseRoot)) {
 }
 
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$releaseName = "PythonRelease_$stamp"
+$releaseBaseName = if ($pythonVersion -match '^Python\s+(\d+\.\d+\.\d+)') {
+    "Python-$($matches[1])"
+} else {
+    "PythonRelease"
+}
+$releaseName = "${releaseBaseName}_$stamp"
 $ReleaseDir = Join-Path $ReleaseRoot $releaseName
 
 New-Item -ItemType Directory -Path $ReleaseDir | Out-Null

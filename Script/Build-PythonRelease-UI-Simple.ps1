@@ -167,68 +167,194 @@ function Find-VcVars64 {
     return $null
 }
 
+function Test-IsWindowsAppsPythonAlias {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    return ($Path -match '(?i)\\AppData\\Local\\Microsoft\\WindowsApps\\python(?:3(?:\.\d+)?)?\.exe$')
+}
+
+function Resolve-PythonCandidate {
+    param(
+        [string]$Path,
+        [string]$Source = "Unknown"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        $resolved = [System.IO.Path]::GetFullPath($Path.Trim('"'))
+    } catch {
+        Write-Host "[DEBUG] [X] Invalid Python candidate path from $Source`: $Path" -ForegroundColor Yellow
+        return $null
+    }
+
+    if (-not (Test-Path $resolved)) {
+        Write-Host "[DEBUG] [X] Python candidate not found from $Source`: $resolved" -ForegroundColor Gray
+        return $null
+    }
+
+    if (Test-IsWindowsAppsPythonAlias -Path $resolved) {
+        Write-Host "[DEBUG] [X] Skipping WindowsApps alias from $Source`: $resolved" -ForegroundColor Yellow
+        return $null
+    }
+
+    try {
+        $item = Get-Item -LiteralPath $resolved -ErrorAction Stop
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $item.Length -eq 0) {
+            Write-Host "[DEBUG] [X] Skipping non-runnable reparse-point Python candidate from $Source`: $resolved" -ForegroundColor Yellow
+            return $null
+        }
+    } catch {
+        Write-Host "[DEBUG] [X] Failed to inspect Python candidate from $Source`: $resolved" -ForegroundColor Yellow
+        return $null
+    }
+
+    try {
+        $versionOutput = & $resolved --version 2>&1
+        $versionStr = ($versionOutput | Out-String).Trim()
+        Write-Host "[DEBUG] Version output from $Source`: $versionStr" -ForegroundColor Gray
+
+        if ($versionStr -match 'Python\s+(\d+)\.(\d+)(?:\.(\d+))?') {
+            $major = [int]$matches[1]
+            $minor = [int]$matches[2]
+            $patch = if ($matches[3]) { [int]$matches[3] } else { 0 }
+
+            if (($major -eq 3) -and (($minor -eq 10) -or ($minor -eq 12))) {
+                Write-Host "[DEBUG] [OK] Found compatible Python from $Source`: $resolved" -ForegroundColor Green
+                return @{
+                    Path = $resolved
+                    Version = "Python $major.$minor.$patch"
+                    Major = $major
+                    Minor = $minor
+                    Patch = $patch
+                    Source = $Source
+                }
+            }
+
+            Write-Host "[DEBUG] [X] Incompatible version from $Source`: $major.$minor (need 3.10 or 3.12)" -ForegroundColor Yellow
+            return $null
+        }
+
+        Write-Host "[DEBUG] [X] Could not parse version from $Source`: $versionStr" -ForegroundColor Yellow
+        return $null
+    } catch {
+        Write-Host "[DEBUG] [X] Version check failed for $Source`: $resolved :: $($_.Exception.Message)" -ForegroundColor Red
+        return $null
+    }
+}
+
+function Add-PythonCandidate {
+    param(
+        [hashtable]$Candidates,
+        [string]$Path,
+        [string]$Source
+    )
+
+    $candidate = Resolve-PythonCandidate -Path $Path -Source $Source
+    if (-not $candidate) {
+        return
+    }
+
+    if (-not $Candidates.ContainsKey($candidate.Path)) {
+        $Candidates[$candidate.Path] = $candidate
+    }
+}
+
+function Get-PythonCandidatesFromLauncher {
+    $candidates = @()
+
+    try {
+        $pyCmd = Get-Command py -ErrorAction Stop
+        $launcherOutput = & $pyCmd.Source -0p 2>&1
+        foreach ($line in @($launcherOutput | ForEach-Object { $_.ToString().Trim() })) {
+            if ($line -match '([A-Za-z]:\\.+?python(?:3(?:\.\d+)?)?\.exe)') {
+                $candidates += $matches[1]
+            }
+        }
+    } catch {
+        Write-Host "[DEBUG] Python launcher not available: $($_.Exception.Message)" -ForegroundColor Gray
+    }
+
+    return $candidates
+}
+
 function Find-BootstrapPython {
-    $searchPaths = @(
+    $searchPatterns = @(
         "${env:ProgramFiles}\Python*",
         "${env:ProgramFiles(x86)}\Python*",
         "${env:LOCALAPPDATA}\Programs\Python\Python*",
         "$env:USERPROFILE\AppData\Local\Programs\Python\Python*"
     )
-    
-    $found = @()
+    $candidates = @{}
     
     Write-Host "[DEBUG] Searching for Bootstrap Python..." -ForegroundColor Cyan
     
-    foreach ($pattern in $searchPaths) {
+    foreach ($pattern in $searchPatterns) {
         Write-Host "[DEBUG] Searching pattern: $pattern" -ForegroundColor Gray
         try {
             $dirs = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue -Directory
             Write-Host "[DEBUG] Found $($dirs.Count) directories matching pattern" -ForegroundColor Gray
             foreach ($dir in $dirs) {
                 $pythonExe = Join-Path $dir.FullName "python.exe"
-                Write-Host "[DEBUG] Checking: $pythonExe" -ForegroundColor Gray
-                if (Test-Path $pythonExe) {
-                    try {
-                        $versionOutput = & $pythonExe --version 2>&1
-                        $versionStr = $versionOutput | Out-String
-                        Write-Host "[DEBUG] Version output: $versionStr" -ForegroundColor Gray
-                        
-                        if ($versionStr -match 'Python\s+(\d+)\.(\d+)') {
-                            $major = [int]$matches[1]
-                            $minor = [int]$matches[2]
-                            Write-Host "[DEBUG] Parsed version: $major.$minor" -ForegroundColor Gray
-                            
-                            # Accept Python 3.10 or 3.12 only
-                            if (($major -eq 3) -and (($minor -eq 10) -or ($minor -eq 12))) {
-                                Write-Host "[DEBUG] [OK] Found compatible Python: $pythonExe" -ForegroundColor Green
-                                $found += @{
-                                    Path = $pythonExe
-                                    Version = "Python $major.$minor"
-                                    Major = $major
-                                    Minor = $minor
-                                }
-                            } else {
-                                Write-Host "[DEBUG] [X] Incompatible version: $major.$minor (need 3.10 or 3.12)" -ForegroundColor Yellow
-                            }
-                        } else {
-                            Write-Host "[DEBUG] [X] Could not parse version from: $versionStr" -ForegroundColor Yellow
-                        }
-                    } catch {
-                        Write-Host "[DEBUG] [X] Version check failed: $_" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Host "[DEBUG] [X] python.exe not found at: $pythonExe" -ForegroundColor Gray
-                }
+                Add-PythonCandidate -Candidates $candidates -Path $pythonExe -Source "Directory scan"
             }
         } catch {
             Write-Host "[DEBUG] [X] Search path failed: $_" -ForegroundColor Red
         }
     }
+
+    foreach ($launcherPath in @(Get-PythonCandidatesFromLauncher)) {
+        Add-PythonCandidate -Candidates $candidates -Path $launcherPath -Source "py launcher"
+    }
+
+    try {
+        $pythonCommand = Get-Command python -ErrorAction Stop
+        Add-PythonCandidate -Candidates $candidates -Path $pythonCommand.Source -Source "PATH python"
+    } catch {
+        Write-Host "[DEBUG] PATH python not available: $($_.Exception.Message)" -ForegroundColor Gray
+    }
     
+    $found = @($candidates.Values | Sort-Object @{ Expression = { $_.Minor }; Descending = $true }, @{ Expression = { $_.Patch }; Descending = $true }, Path)
     Write-Host "[DEBUG] Total compatible Python installations found: $($found.Count)" -ForegroundColor Cyan
     
     # Sort by version (prefer 3.12 over 3.10)
-    return $found | Sort-Object { $_.Minor } -Descending
+    return $found
+}
+
+function Test-BootstrapPythonInput {
+    param([string]$Path)
+
+    $pathValidation = Test-SafePathInput -Value $Path -FieldName "BootstrapPython" -RequireExistingPath
+    if (-not $pathValidation.IsValid) {
+        return $pathValidation
+    }
+
+    if (Test-IsWindowsAppsPythonAlias -Path $Path) {
+        return @{
+            IsValid = $false
+            Error = "BootstrapPython points to the WindowsApps alias. Install Python 3.12 or 3.10 from python.org and use the real python.exe path."
+        }
+    }
+
+    $candidate = Resolve-PythonCandidate -Path $Path -Source "User input"
+    if (-not $candidate) {
+        return @{
+            IsValid = $false
+            Error = "BootstrapPython must be a runnable Python 3.10 or 3.12 executable. WindowsApps aliases are not supported."
+        }
+    }
+
+    return @{
+        IsValid = $true
+        Error = $null
+        Candidate = $candidate
+    }
 }
 
 function Test-VisualStudio {
@@ -371,7 +497,7 @@ function Test-SafeSimpleName {
     return @{ IsValid = $true; Error = $null }
 }
 
-function Cleanup-BuildStatus {
+function Clear-BuildStatus {
     $threshold = (Get-Date).AddHours(-$script:BuildStatusTtlHours)
     foreach ($id in @($script:BuildStatus.Keys)) {
         $entry = $script:BuildStatus[$id]
@@ -626,8 +752,9 @@ function Invoke-SetupVenvHandler {
         return
     }
     
-    if ([string]::IsNullOrWhiteSpace($data.BootstrapPython)) {
-        Send-JsonResponse -Context $Context -Data @{ Success = $false; Error = "BootstrapPython is required" } -StatusCode 400
+    $bootstrapValidation = Test-BootstrapPythonInput -Path $data.BootstrapPython
+    if (-not $bootstrapValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{ Success = $false; Error = $bootstrapValidation.Error } -StatusCode 400
         return
     }
     
@@ -678,7 +805,7 @@ function Invoke-SetupVenvHandler {
         } else {
             # Create new venv
             Write-Info "Creating new venv: $venvPath"
-            $proc = Start-Process -FilePath $data.BootstrapPython `
+            $proc = Start-Process -FilePath $bootstrapValidation.Candidate.Path `
                 -ArgumentList @("-m", "venv", $venvPath) `
                 -NoNewWindow -Wait -PassThru
             
@@ -728,7 +855,7 @@ function Invoke-SetupVenvHandler {
 
 function Invoke-BuildHandler {
     param([System.Net.HttpListenerContext]$Context)
-    Cleanup-BuildStatus
+    Clear-BuildStatus
 
     try {
         $body = Get-RequestBody -Context $Context
@@ -752,7 +879,7 @@ function Invoke-BuildHandler {
         return
     }
 
-    $bootstrapValidation = Test-SafePathInput -Value $data.BootstrapPython -FieldName "BootstrapPython" -RequireExistingPath
+    $bootstrapValidation = Test-BootstrapPythonInput -Path $data.BootstrapPython
     if (-not $bootstrapValidation.IsValid) {
         Send-JsonResponse -Context $Context -Data @{
             Success = $false
@@ -761,6 +888,7 @@ function Invoke-BuildHandler {
         } -StatusCode 400
         return
     }
+    $bootstrapPythonPath = $bootstrapValidation.Candidate.Path
 
     $venvName = if ($data.VenvName) { $data.VenvName } else { "doc-venv" }
     $venvValidation = Test-SafeSimpleName -Value $venvName -FieldName "VenvName"
@@ -843,7 +971,7 @@ echo Visual Studio environment ready
 echo.
 echo Starting build...
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$BuildScriptPath" -SourcePath "$($data.SourcePath)" -BootstrapPython "$($data.BootstrapPython)" -VenvName "$venvName" -ReleaseRoot "$releaseRoot" -WinSdkVersion "$winSdkVersion" -BuildId "$buildId" -LogPath "$logPath"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$BuildScriptPath" -SourcePath "$($data.SourcePath)" -BootstrapPython "$bootstrapPythonPath" -VenvName "$venvName" -ReleaseRoot "$releaseRoot" -WinSdkVersion "$winSdkVersion" -BuildId "$buildId" -LogPath "$logPath"
 echo.
 if errorlevel 1 (
     echo ========================================
@@ -887,7 +1015,7 @@ function Invoke-BuildStatusHandler {
         [string]$BuildId
     )
 
-    Cleanup-BuildStatus
+    Clear-BuildStatus
 
     if (-not $script:BuildStatus.ContainsKey($BuildId)) {
         Send-JsonResponse -Context $Context -Data @{ 
@@ -938,7 +1066,7 @@ function Invoke-BuildLogHandler {
         [string]$BuildId
     )
 
-    Cleanup-BuildStatus
+    Clear-BuildStatus
 
     if (-not $script:BuildStatus.ContainsKey($BuildId)) {
         Send-TextResponse -Context $Context -Text "Build ID not found: $BuildId" -ContentType "text/plain" -StatusCode 404
@@ -1414,7 +1542,7 @@ function Get-HtmlUI {
 
                             <div class="form-group">
                                 <label for="winSdkVersion">Windows SDK Version</label>
-                                <input type="text" id="winSdkVersion" value="10.0.19041.0" />
+                                <input type="text" id="winSdkVersion" value="" placeholder="Auto-detected from installed Windows SDK" />
                             </div>
 
                             <div class="form-group">
@@ -1556,6 +1684,33 @@ function Get-HtmlUI {
             }
         }
         
+        const LEGACY_DEFAULT_WIN_SDK = '10.0.19041.0';
+        let winSdkVersionTouched = false;
+        const winSdkVersionInput = document.getElementById('winSdkVersion');
+        if (winSdkVersionInput) {
+            winSdkVersionInput.addEventListener('input', () => {
+                winSdkVersionTouched = true;
+            });
+        }
+
+        function syncDetectedWindowsSdkVersion(data) {
+            const sdkInput = document.getElementById('winSdkVersion');
+            if (!sdkInput || !data || !data.WindowsSDK || !data.WindowsSDK.Installed || !data.WindowsSDK.Version) {
+                return;
+            }
+
+            const currentValue = (sdkInput.value || '').trim();
+            const shouldAutofill =
+                !winSdkVersionTouched ||
+                currentValue === '' ||
+                currentValue === LEGACY_DEFAULT_WIN_SDK;
+
+            if (shouldAutofill) {
+                sdkInput.value = data.WindowsSDK.Version;
+                winSdkVersionTouched = false;
+            }
+        }
+
         let currentBuildId = null;
         let buildStatusInterval = null;
         
@@ -1687,6 +1842,7 @@ function Get-HtmlUI {
             try {
                 const response = await fetch('/api/prerequisites');
                 const data = await response.json();
+                syncDetectedWindowsSdkVersion(data);
                 
                 // Debug: Log the response data
                 console.log('[DEBUG] Prerequisites response:', data);
@@ -1834,7 +1990,7 @@ function Start-WebServer {
         
         while ($listener.IsListening) {
             try {
-                Cleanup-BuildStatus
+                Clear-BuildStatus
 
                 # Start async operation if not already started
                 if ($null -eq $asyncResult) {

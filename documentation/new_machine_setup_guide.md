@@ -17,8 +17,10 @@ Verify that PSUB works on a fresh Windows machine with no dependency on an older
 4. Optionally install the `Python development` workload if you want the extra tooling, but it is not required for PSUB builds.
 5. Install `Git for Windows`.
 6. Install bootstrap Python:
-   - Recommended: `Python 3.12`
+   - Recommended: `Python 3.12` from `python.org`
    - Supported alternative: `Python 3.10`
+   - For PSUB, prefer the normal Windows installer over the Microsoft Store package.
+   - Check `Add Python to PATH` during installation.
 7. If you plan to test `Python 3.10` MSI builds, enable `.NET Framework 3.5` in Windows Features.
 
 ## Quick Verification
@@ -28,7 +30,15 @@ Open a normal PowerShell window and confirm the basics:
 ```powershell
 git --version
 python --version
+where.exe python
+py -0p
 ```
+
+Expected Python result:
+
+- `python --version` shows `Python 3.12.x` or `Python 3.10.x`
+- `where.exe python` points to a real install path such as `C:\Users\<User>\AppData\Local\Programs\Python\Python312\python.exe`
+- Avoid `C:\Users\<User>\AppData\Local\Microsoft\WindowsApps\python.exe` for PSUB, because that is typically only a Windows app alias
 
 If you want to verify the compiler manually, open `x64 Native Tools Command Prompt for VS 2022` and run:
 
@@ -61,18 +71,22 @@ Open `http://localhost:8080` and confirm that these prerequisites are marked rea
 - Bootstrap Python
 - Git
 
+If `Auto-Detect` does not find Python, enter the full path to the real `python.exe` from the python.org installation. Do not use the `WindowsApps` alias path.
+If the detected Windows SDK shown in prerequisites is newer than `10.0.19041.0`, PSUB should now prefill that detected version automatically in the build settings.
+
 ## First CLI Test
 
 From normal PowerShell, run the CLI build script and let PSUB bootstrap the Visual Studio environment automatically:
 
 ```powershell
-.\Script\Build-PythonRelease.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14"
+.\Script\Build-PythonRelease.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14" -BootstrapPython "C:\Users\<User>\AppData\Local\Programs\Python\Python312\python.exe"
 ```
 
 Expected result:
 
 - PSUB detects `Visual Studio 2022 Professional`
 - PSUB imports the `vcvars64.bat` environment automatically
+- PSUB uses the installed Windows SDK version if the old default is not present
 - The build proceeds into the normal `PCbuild` and `Tools\msi` steps
 
 ## Recommended Test Sequence
@@ -81,6 +95,7 @@ Expected result:
 2. Confirm the build gets through prerequisite setup and externals download.
 3. Run a full installer build.
 4. After that succeeds, optionally test `Python 3.10.x` to verify the legacy WiX/.NET 3.5 path.
+5. For `Python 3.10.x`, confirm `doc.msi` is present, since that path depends on compiled HTML Help documentation being created successfully.
 
 ## What to Record
 
@@ -94,6 +109,7 @@ For the clean-machine verification, capture:
 - Whether the UI prerequisites check passed
 - Whether CLI worked from normal PowerShell
 - Final build result and output path
+- Final release zip name, which should follow `Python-<version>_<timestamp>.zip`
 
 ## Success Criteria
 

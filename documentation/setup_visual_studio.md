@@ -43,7 +43,7 @@ You need the x64/x86 and ARM64 toolchains available in the selected Visual Studi
 
 - **Windows 10 SDK (10.0.19041.0)** or later
 - Should be included with the Desktop development workload
-- Verify it's installed in: `C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0`
+- Verify it's installed in a versioned folder such as `C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0` or `C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0`
 
 ## Installation Steps
 
@@ -81,9 +81,10 @@ After installation, verify Visual Studio is set up correctly:
 - Search for `MSVC` and install the x64/x86 and ARM64 variants for that version
 
 ### Wrong SDK version
-- The build requires Windows 10 SDK 10.0.19041.0
+- The build requires Windows 10 SDK 10.0.19041.0 or later
 - Install it via Visual Studio Installer → Individual components
 - Or download from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
+- PSUB can use a newer installed SDK automatically when the older minimum version is not present
 
 ## Next Steps
 

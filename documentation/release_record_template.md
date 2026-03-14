@@ -49,6 +49,7 @@ Use this template for each release run.
 - Output folder:
 - Release folder:
 - Release zip:
+- Release zip naming verified (`Python-<version>_<timestamp>.zip`):
 - Main installer:
 - MSI set:
 - Embed zip:

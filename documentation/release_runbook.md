@@ -27,6 +27,7 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Bootstrap Python available: 3.10 or 3.12
 - Visual Studio 2022 Professional (recommended) or Visual Studio 2019 with C++ workload/toolchains installed
 - Windows SDK available (10.0.19041.0 or later)
+- Record the actual SDK version used if PSUB falls forward to a newer installed version
 
 ## Known issues and fixes
 
@@ -46,6 +47,13 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Some environments expose SDK under WOW6432Node registry path.
 - Verify both registry and include directory on disk.
 
+### 4) Python 3.10 `doc.msi` / missing `.chm`
+
+- Symptom: MSI build fails with an error such as missing `python31020.chm`.
+- Root cause: compiled HTML Help documentation was not available before WiX packaging.
+- PSUB now builds and verifies the `.chm` file before running `buildrelease.bat --skip-doc`.
+- If you need to reproduce manually, run `Doc\make.bat htmlhelp` from the CPython source tree after `Tools\msi\get_externals.bat`.
+
 ## Evidence to keep
 
 - Source version and source URLs
@@ -54,4 +62,5 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Visual Studio version, edition, and installation path used
 - Build log path
 - Artifact output path and zip path
+- Final PSUB release zip name, expected in the form `Python-<version>_<timestamp>.zip`
 - Any warnings/errors and final disposition
