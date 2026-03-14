@@ -1,0 +1,167 @@
+[
+  {
+    "title": "PSUB Operator Guide",
+    "subtitle": "Building Python security releases on Windows with the PSUB web UI",
+    "layout": "hero",
+    "image": "../../assets/background.png",
+    "callouts": [
+      "Supported versions: 3.10.x, 3.11.x, 3.12.x"
+    ],
+    "notes": [
+      "Hero slide uses the repository background asset."
+    ]
+  },
+  {
+    "title": "What PSUB Does",
+    "subtitle": "A practical operator workflow from preflight to deliverables",
+    "layout": "timeline",
+    "body": [
+      "Validate prerequisites",
+      "Point PSUB at extracted CPython source",
+      "Prepare the documentation virtual environment",
+      "Launch the build in a dedicated terminal",
+      "Review logs and collect EXE, MSI, and embed artifacts"
+    ],
+    "callouts": [
+      "Primary operator path is the local web UI on port 8080.",
+      "CLI remains available for repeatable scripted runs."
+    ],
+    "notes": [
+      "Derived from README.md and the UI script."
+    ]
+  },
+  {
+    "title": "Before You Start",
+    "subtitle": "Environment prerequisites to clear before opening PSUB",
+    "layout": "checklist",
+    "body": [
+      "Visual Studio 2019 or 2022 with Desktop development with C++",
+      "MSVC toolchains including x64, x86, and ARM64",
+      "Windows 10 SDK 10.0.19041.0 or later",
+      "Bootstrap Python 3.10 or 3.12",
+      "Git for Windows on PATH",
+      ".NET Framework 3.5 for legacy Python 3.10 MSI flows"
+    ],
+    "callouts": [
+      "PSUB highlights missing items and links directly to setup guides.",
+      "Do not use Python 3.13 as the bootstrap interpreter."
+    ],
+    "notes": [
+      "Sources: documentation/prerequisites_overview.md and documentation/python_build_minimal_guide.md."
+    ]
+  },
+  {
+    "title": "Launch PSUB",
+    "subtitle": "Start the local web UI and open it in a browser",
+    "layout": "image-focus",
+    "body": [
+      "Run .\\Script\\Build-PythonRelease-UI-Simple.ps1 -Port 8080",
+      "Open http://localhost:8080/",
+      "The build itself opens in a new terminal window with live output"
+    ],
+    "image": "screenshots/01-home-overview.png",
+    "callouts": [
+      "Default operator entry point is the web UI rather than the CLI script."
+    ]
+  },
+  {
+    "title": "Check Prerequisites",
+    "subtitle": "Use the left-side panel as your environment readiness gate",
+    "layout": "image-focus",
+    "body": [
+      "Refresh the prerequisite check when the machine changes",
+      "Read the summary banner before entering any build values",
+      "Follow setup-guide links for missing tools or SDK components"
+    ],
+    "image": "screenshots/02-prerequisites-panel.png",
+    "callouts": [
+      "The panel covers Visual Studio, toolchains, SDK, bootstrap Python, and Git."
+    ]
+  },
+  {
+    "title": "Prepare Build Settings",
+    "subtitle": "Standard settings define the reusable defaults for each run",
+    "layout": "image-focus",
+    "body": [
+      "Keep the documentation venv name at doc-venv unless you have a reason to change it",
+      "Choose the release output directory where final packages and zip files should land",
+      "Set the Windows SDK version expected by the CPython build",
+      "Use Setup Virtual Environment before the first build on a new source tree"
+    ],
+    "image": "screenshots/03-standard-build-settings.png",
+    "callouts": [
+      "PSUB can create or update the documentation venv from the UI."
+    ]
+  },
+  {
+    "title": "Configure and Start a Build",
+    "subtitle": "Fill in the CPython source and bootstrap interpreter, then launch",
+    "layout": "image-focus",
+    "body": [
+      "SourcePath must point at the extracted CPython root containing PCbuild and Tools\\msi",
+      "Bootstrap Python must be 3.10 or 3.12",
+      "Use Auto-Detect to prefill a compatible local Python path",
+      "Start Build opens a dedicated terminal and PSUB polls build status in the page"
+    ],
+    "image": "screenshots/04-build-configuration.png",
+    "callouts": [
+      "The UI blocks empty SourcePath and BootstrapPython values before it starts the build."
+    ]
+  },
+  {
+    "title": "Monitor Logs and Results",
+    "subtitle": "Use inline status and the log viewer to validate the run",
+    "layout": "image-focus",
+    "body": [
+      "Open Latest Log to inspect the captured run output",
+      "Watch button and status-color changes for running, success, or failure states",
+      "Collect release artifacts from the configured release root and CPbuild\\amd64\\en-us"
+    ],
+    "image": "screenshots/06-build-log-or-status.png",
+    "callouts": [
+      "If a real build state is not staged, use the screenshot with the log button highlighted and explain the expected transitions."
+    ]
+  },
+  {
+    "title": "Common Failure Cases",
+    "subtitle": "Most blocked runs fall into a small set of operator-fixable issues",
+    "layout": "two-column",
+    "body": [
+      "Git missing from PATH",
+      "Windows SDK or MSVC toolchains not fully installed",
+      "Wrong bootstrap Python version",
+      "Missing doc-venv or missing Sphinx dependencies",
+      "Python 3.10 WiX /.NET 3.5 dependency problem",
+      "buildrelease.bat reports Build FAILED even when exit code is 0"
+    ],
+    "callouts": [
+      "Install Git for Windows and restart the shell.",
+      "Use the setup guides linked by the prerequisites panel.",
+      "Switch to Python 3.10 or 3.12 only.",
+      "Run Setup Virtual Environment or install Doc\\requirements.txt into the venv.",
+      "Enable .NET Framework 3.5 and rerun MSI externals for 3.10 flows.",
+      "Trust PSUB's output-based failure guard instead of the batch file exit code alone."
+    ],
+    "notes": [
+      "Sources: documentation/release_runbook.md and skills/psub-release-ops/SKILL.md."
+    ]
+  },
+  {
+    "title": "Standard Operator Workflow",
+    "subtitle": "The repeatable PSUB sequence for a clean release run",
+    "layout": "timeline",
+    "body": [
+      "Verify prerequisites",
+      "Open the UI",
+      "Confirm environment health",
+      "Set SourcePath and BootstrapPython",
+      "Create or refresh doc-venv",
+      "Start the build",
+      "Review the log",
+      "Collect the final artifacts"
+    ],
+    "callouts": [
+      "This sequence aligns with the repo runbook and keeps failures visible early."
+    ]
+  }
+]
