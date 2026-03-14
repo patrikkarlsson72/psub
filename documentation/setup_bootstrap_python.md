@@ -112,7 +112,7 @@ If auto-detect doesn't find your Python installation:
 ## Next Steps
 
 Once Bootstrap Python is installed:
-1. Verify [Visual Studio 2019](setup_visual_studio.md) is set up
+1. Verify [Visual Studio 2022 / 2019](setup_visual_studio.md) is set up
 2. Verify [Windows SDK](setup_windows_sdk.md) is installed
 3. Return to the PSUB web UI
 4. Click **"Auto-Detect"** to find your Python installation

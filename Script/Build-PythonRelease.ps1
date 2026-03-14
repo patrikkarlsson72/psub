@@ -30,6 +30,7 @@ $ErrorActionPreference = "Stop"
 $script:BuildError = $null
 $script:LogPath = $LogPath
 $script:BuildStart = Get-Date
+$script:SelectedVisualStudio = $null
 
 function Write-Log {
     param(
@@ -99,6 +100,172 @@ trap {
     exit 1
 }
 
+function Get-VsWherePath {
+    $candidates = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-VisualStudioInstallations {
+    $installs = @()
+    $vswhere = Get-VsWherePath
+
+    if ($vswhere) {
+        try {
+            $json = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json -utf8 2>$null
+            if ($json) {
+                $parsed = $json | ConvertFrom-Json
+                foreach ($item in @($parsed)) {
+                    if (-not $item.installationPath) {
+                        continue
+                    }
+
+                    $installationPath = $item.installationPath
+                    $majorVersion = $null
+                    if ($item.catalog -and $item.catalog.productLineVersion) {
+                        $majorVersion = $item.catalog.productLineVersion
+                    }
+                    if (-not $majorVersion) {
+                        try {
+                            $majorVersion = switch (([version]$item.installationVersion).Major) {
+                                16 { "2019" }
+                                17 { "2022" }
+                                default { $null }
+                            }
+                        } catch {
+                            $majorVersion = $null
+                        }
+                    }
+
+                    $displayName = $item.displayName
+                    if (-not $displayName -and $item.catalog) {
+                        $displayName = $item.catalog.productDisplayVersion
+                    }
+
+                    $edition = $null
+                    if ($item.productId) {
+                        $edition = ($item.productId -split '\.')[-1]
+                    } elseif ($item.catalog -and $item.catalog.productLine) {
+                        $edition = $item.catalog.productLine
+                    }
+
+                    $installs += [pscustomobject]@{
+                        Path = $installationPath
+                        Version = $item.catalog.productDisplayVersion
+                        Product = $majorVersion
+                        Edition = $edition
+                        DisplayName = $displayName
+                        InstanceId = $item.instanceId
+                        VcVars = Join-Path $installationPath "VC\Auxiliary\Build\vcvars64.bat"
+                    }
+                }
+            }
+        } catch {
+            Write-Info "vswhere detection failed: $($_.Exception.Message)"
+        }
+    }
+
+    if (@($installs).Count -eq 0) {
+        $legacyPaths = @(
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community"; Product = "2019"; Edition = "Community" },
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional"; Product = "2019"; Edition = "Professional" },
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise"; Product = "2019"; Edition = "Enterprise" },
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community"; Product = "2022"; Edition = "Community" },
+            @{ Path = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community"; Product = "2022"; Edition = "Community" },
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional"; Product = "2022"; Edition = "Professional" },
+            @{ Path = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional"; Product = "2022"; Edition = "Professional" },
+            @{ Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise"; Product = "2022"; Edition = "Enterprise" },
+            @{ Path = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"; Product = "2022"; Edition = "Enterprise" }
+        )
+
+        foreach ($legacy in $legacyPaths) {
+            if (Test-Path $legacy.Path) {
+                $installs += [pscustomobject]@{
+                    Path = $legacy.Path
+                    Version = $legacy.Product
+                    Product = $legacy.Product
+                    Edition = $legacy.Edition
+                    DisplayName = "Visual Studio $($legacy.Product) $($legacy.Edition)"
+                    InstanceId = $legacy.Path
+                    VcVars = Join-Path $legacy.Path "VC\Auxiliary\Build\vcvars64.bat"
+                }
+            }
+        }
+    }
+
+    return @($installs | Where-Object { $_.Product -in @("2019", "2022") } | Sort-Object {
+        try { [version]$_.Version } catch {
+            if ($_.Product -match '^\d{4}$') { [version]"$($_.Product).0" } else { [version]"0.0" }
+        }
+    } -Descending)
+}
+
+function Find-VisualStudioInstallation {
+    foreach ($install in (Get-VisualStudioInstallations)) {
+        if (Test-Path $install.VcVars) {
+            return $install
+        }
+    }
+
+    return $null
+}
+
+function Import-VisualStudioEnvironment {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Install
+    )
+
+    if (-not (Test-Path $Install.VcVars)) {
+        $errorMsg = "Visual Studio environment script not found at '$($Install.VcVars)'"
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    Write-Info "Using Visual Studio installation: $($Install.DisplayName)"
+    Write-Info "Visual Studio path         : $($Install.Path)"
+    Write-Info "Visual Studio vcvars path  : $($Install.VcVars)"
+
+    $cmdArgs = @(
+        '/c',
+        "`"$($Install.VcVars)`" >nul && set"
+    )
+
+    $envOutput = & $env:COMSPEC $cmdArgs 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        $errorMsg = "Failed to initialize Visual Studio build environment via '$($Install.VcVars)' (exit code: $exitCode)"
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    foreach ($line in $envOutput) {
+        $lineText = $line.ToString()
+        $separatorIndex = $lineText.IndexOf('=')
+        if ($separatorIndex -le 0) {
+            continue
+        }
+
+        $name = $lineText.Substring(0, $separatorIndex)
+        $value = $lineText.Substring($separatorIndex + 1)
+        if ($name.StartsWith('=')) {
+            continue
+        }
+        [System.Environment]::SetEnvironmentVariable($name, $value, "Process")
+    }
+
+    $script:SelectedVisualStudio = $Install
+}
+
 # --- Resolve paths -----------------------------------------------------------
 
 if ([string]::IsNullOrWhiteSpace($SourcePath)) {
@@ -146,6 +313,15 @@ if (-not (Test-Path $VenvPath)) {
     throw $errorMsg
 }
 
+$visualStudioInstall = Find-VisualStudioInstallation
+if (-not $visualStudioInstall) {
+    $errorMsg = "Visual Studio 2019/2022 with C++ build tools was not found. Install Visual Studio 2022 Professional (recommended) or a supported 2019/2022 edition with the Desktop development with C++ workload."
+    Write-Err $errorMsg
+    throw $errorMsg
+}
+
+Import-VisualStudioEnvironment -Install $visualStudioInstall
+
 Write-Info "Source path       : $SourcePath"
 Write-Info "PCbuild path      : $PcbuildPath"
 Write-Info "MSI tools path    : $MsiToolsPath"
@@ -192,6 +368,10 @@ $fingerprint = @{
     BootstrapVersion = $bootstrapVersion
     WinSdkVersion = $WinSdkVersion
     MsvcToolset = $msvcInfo
+    VisualStudioPath = if ($script:SelectedVisualStudio) { $script:SelectedVisualStudio.Path } else { "" }
+    VisualStudioVersion = if ($script:SelectedVisualStudio) { $script:SelectedVisualStudio.Version } else { "" }
+    VisualStudioProduct = if ($script:SelectedVisualStudio) { $script:SelectedVisualStudio.Product } else { "" }
+    VisualStudioEdition = if ($script:SelectedVisualStudio) { $script:SelectedVisualStudio.Edition } else { "" }
     ScriptCommit = $commitHash
 }
 Write-Log -Level "META" -Message (($fingerprint | ConvertTo-Json -Compress))

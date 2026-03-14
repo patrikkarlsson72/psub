@@ -6,9 +6,10 @@ This guide provides an overview of all prerequisites needed to build Python secu
 
 Before starting a build, ensure you have:
 
-- `Visual Studio 2019` (Community, Professional, or Enterprise)
+- `Visual Studio 2022` (Professional recommended; Community, Professional, or Enterprise supported)
   - Desktop development with C++ workload
-  - MSVC v142 toolchains (x64/x86, ARM64)
+  - MSVC toolchains (x64/x86, ARM64)
+- `Visual Studio 2019` remains supported as a compatibility fallback
 - `Windows 10 SDK` (version 10.0.19041.0 or later)
 - `Bootstrap Python` (3.10 or 3.12, not 3.13)
 - `Git for Windows` (required for MSI installer build)
@@ -19,7 +20,7 @@ Before starting a build, ensure you have:
 
 For detailed installation instructions, see:
 
-1. **[Visual Studio 2019 Setup](setup_visual_studio.md)**
+1. **[Visual Studio 2022 / 2019 Setup](setup_visual_studio.md)**
    - Required workloads and components
    - How to verify installation
    - Troubleshooting common issues
@@ -47,7 +48,7 @@ For detailed installation instructions, see:
 
 The PSUB web UI prerequisites checker should verify:
 
-- Visual Studio 2019 is installed
+- Visual Studio 2019 or 2022 is installed
 - Required MSVC toolchains are present
 - Windows SDK is installed
 - Bootstrap Python (3.10 or 3.12) is available
@@ -68,7 +69,7 @@ If any prerequisites are missing, the UI will show help links to relevant setup 
 
 Recommended installation order:
 
-1. Install Visual Studio 2019 with required components
+1. Install Visual Studio 2022 Professional with required components
 2. Verify Windows SDK is installed (usually included with VS)
 3. Install Bootstrap Python (3.10 or 3.12)
 4. Install Git for Windows
@@ -83,7 +84,7 @@ If you encounter issues:
 1. Check the setup guide for the component that is failing
 2. Review "Common Issues" in each guide
 3. Verify all components are installed in expected locations
-4. Ensure you are using supported versions (VS 2019, Python 3.10/3.12)
+4. Ensure you are using supported versions (VS 2022/2019, Python 3.10/3.12)
 
 ## Next Steps
 

@@ -13,7 +13,7 @@ This is the minimum required version. The build process will use this specific S
 ### Method 1: Via Visual Studio Installer (Recommended)
 
 1. Open **Visual Studio Installer**
-2. Click **"Modify"** on your Visual Studio 2019 installation
+2. Click **"Modify"** on your Visual Studio 2022 or 2019 installation
 3. Go to the **Individual components** tab
 4. Search for **"Windows 10 SDK"**
 5. Check **"Windows 10 SDK (10.0.19041.0)"** or a later version
@@ -75,7 +75,7 @@ After installation, verify the SDK is installed:
 ## Next Steps
 
 Once Windows SDK is installed:
-1. Verify Visual Studio 2019 is set up: [Visual Studio Setup Guide](setup_visual_studio.md)
+1. Verify Visual Studio 2022 or 2019 is set up: [Visual Studio Setup Guide](setup_visual_studio.md)
 2. Install [Bootstrap Python](setup_bootstrap_python.md)
 3. Return to the PSUB web UI and check prerequisites again
 

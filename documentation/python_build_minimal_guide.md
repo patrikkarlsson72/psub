@@ -5,16 +5,18 @@
 
 # 1. Install Required Tools
 
-## Visual Studio Community 2019 (recommended)
+## Visual Studio Professional 2022 (recommended)
 **Required workloads:**
 - Desktop development with C++
-- Python development
+- Python development (optional)
 
 ## Required MSVC toolsets
 Ensure these **Individual Components** are installed:
 
-- MSVC v142 – VS 2019 C++ x64/x86 build tools  
-- MSVC v142 – VS 2019 C++ ARM64 build tools  
+- MSVC v143 – VS 2022 C++ x64/x86 build tools  
+- MSVC v143 – VS 2022 C++ ARM64 build tools  
+
+If you must use Visual Studio 2019 instead, install the equivalent `v142` components.
 
 > WiX 3.14 requires ARM64 toolchains even when building x64 installers.
 
@@ -48,7 +50,7 @@ C:\src\Python-3.11.14\
 
 # 3. Create Documentation Virtual Environment
 
-In **x64 Native Tools Command Prompt for VS 2019**:
+In **x64 Native Tools Command Prompt for VS 2022** or normal PowerShell:
 
 ```bat
 cd C:\src\Python-3.11.14
@@ -139,10 +141,12 @@ pip install -r Doc\requirements.txt
 ```
 
 ### Wrong compiler/toolset
-Always use:
+Preferred:
+``` 
+x64 Native Tools Command Prompt for VS 2022
 ```
-x64 Native Tools Command Prompt for VS 2019
-```
+
+PSUB CLI can also bootstrap the Visual Studio environment automatically when started from normal PowerShell.
 
 ### Cannot find Git on PATH
 Install Git for Windows:

@@ -127,14 +127,14 @@ This means Git wasn't added to the system PATH during installation. Either:
 
 To ensure Git is properly configured for the Python build process:
 
-1. Open **x64 Native Tools Command Prompt for VS 2019**
+1. Open **x64 Native Tools Command Prompt for VS 2022** or a normal PowerShell session
 2. Run:
    ```cmd
    git --version
    ```
 3. You should see the Git version number
 
-If Git is available in the VS command prompt, it will work during the build process.
+If Git is available in the Visual Studio prompt or in normal PowerShell, it will work during the build process.
 
 ## Next Steps
 

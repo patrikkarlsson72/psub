@@ -30,6 +30,8 @@ Use this template for each release run.
 - Git version:
 - Bootstrap Python path/version:
 - Visual Studio path/version:
+- Visual Studio edition:
+- MSVC toolset path/version:
 - Windows SDK path/version:
 - Notes:
 

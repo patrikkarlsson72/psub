@@ -47,10 +47,11 @@ PSUB/
 
 ### Prerequisites
 
-- Visual Studio 2019 (Community Edition or higher)
+- Visual Studio 2022 (Professional recommended; Community/Enterprise also supported)
   - Desktop development with C++
-  - Python development workload
-  - MSVC v142 toolsets (x64/x86, ARM64, ARM64EC)
+  - Python development workload (optional)
+  - MSVC toolsets for x64/x86 and ARM64
+  - Visual Studio 2019 remains supported as a fallback
 - Windows 10 SDK (10.0.19041.0)
 - Bootstrap Python (3.10 or 3.12)
 - Git for Windows (required for MSI installer build)
@@ -90,7 +91,7 @@ The documentation guides are rendered as formatted HTML with proper styling for 
 ### Available Guides
 
 - **[Prerequisites Overview](documentation/prerequisites_overview.md)** - Complete checklist of required tools
-- **[Visual Studio Setup](documentation/setup_visual_studio.md)** - Installing and configuring VS 2019
+- **[Visual Studio Setup](documentation/setup_visual_studio.md)** - Installing and configuring VS 2022/2019
 - **[Windows SDK Setup](documentation/setup_windows_sdk.md)** - Installing the required SDK version
 - **[Bootstrap Python Setup](documentation/setup_bootstrap_python.md)** - Installing Python for build scripts
 - **[Git Setup](documentation/setup_git.md)** - Installing Git for Windows

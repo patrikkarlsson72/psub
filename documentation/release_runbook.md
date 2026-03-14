@@ -25,7 +25,7 @@ This runbook captures the repeatable workflow for building CPython security rele
 
 - Git available: `git --version`
 - Bootstrap Python available: 3.10 or 3.12
-- Visual Studio 2019 C++ workload/toolchains installed
+- Visual Studio 2022 Professional (recommended) or Visual Studio 2019 with C++ workload/toolchains installed
 - Windows SDK available (10.0.19041.0 or later)
 
 ## Known issues and fixes
@@ -51,6 +51,7 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Source version and source URLs
 - Integrity verification results
 - Build command and `SourcePath`
+- Visual Studio version, edition, and installation path used
 - Build log path
 - Artifact output path and zip path
 - Any warnings/errors and final disposition
