@@ -37,6 +37,8 @@ Install Git and ensure it's in your PATH:
 - Recommended for repo operations and PSUB build metadata
 - Verify installation: `git --version`
 
+PSUB can still complete a build from an extracted `python.org` source archive even if Git is missing. In that case, treat Git as recommended tooling rather than a blocker.
+
 ---
 
 # 2. Prepare the Source

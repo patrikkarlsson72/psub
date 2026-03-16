@@ -15,7 +15,7 @@ Verify that PSUB works on a fresh Windows machine with no dependency on an older
    - `MSVC v143 - VS 2022 C++ ARM64 build tools`
    - `Windows 10 SDK (10.0.19041.0)` or newer
 4. Optionally install the `Python development` workload if you want the extra tooling, but it is not required for PSUB builds.
-5. Install `Git for Windows`.
+5. Optionally install `Git for Windows` if you want normal repo workflows on the machine.
 6. Install bootstrap Python:
    - Recommended: `Python 3.12` from `python.org`
    - Supported alternative: `Python 3.10`
@@ -28,10 +28,15 @@ Verify that PSUB works on a fresh Windows machine with no dependency on an older
 Open a normal PowerShell window and confirm the basics:
 
 ```powershell
-git --version
 python --version
 where.exe python
 py -0p
+```
+
+Optional:
+
+```powershell
+git --version
 ```
 
 Expected Python result:
@@ -69,10 +74,11 @@ Open `http://localhost:8080` and confirm that these prerequisites are marked rea
 - Visual Studio
 - Windows SDK
 - Bootstrap Python
-- Git
+- Git should appear as recommended rather than blocking
 
 If `Auto-Detect` does not find Python, enter the full path to the real `python.exe` from the python.org installation. Do not use the `WindowsApps` alias path.
 If the detected Windows SDK shown in prerequisites is newer than `10.0.19041.0`, PSUB should now prefill that detected version automatically in the build settings.
+If Git is missing, the environment can still be ready for build as long as the required toolchain, SDK, and bootstrap Python are present.
 
 ## First CLI Test
 
@@ -104,7 +110,7 @@ For the clean-machine verification, capture:
 - Visual Studio version and edition
 - Windows SDK version
 - Bootstrap Python version
-- Git version
+- Git version if installed
 - PSUB commit hash used
 - Whether the UI prerequisites check passed
 - Whether CLI worked from normal PowerShell
@@ -119,3 +125,4 @@ The clean-machine test is successful when:
 - PSUB detects it correctly in the UI
 - `Build-PythonRelease.ps1` runs from normal PowerShell without requiring a manual Developer Prompt
 - A full build completes for at least one supported Python release line
+- Optional Git installation does not prevent PSUB from reporting the environment as ready

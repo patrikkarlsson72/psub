@@ -17,6 +17,7 @@ Before starting a build, ensure you have:
 - `CPython source code` (extracted to a local directory)
 
 PSUB can use a newer installed Windows SDK automatically when the older minimum version is not present.
+PSUB can also build successfully without Git when working from an extracted `python.org` source tree, although Git is still recommended for repository workflows and metadata capture.
 
 ## Detailed Setup Guides
 

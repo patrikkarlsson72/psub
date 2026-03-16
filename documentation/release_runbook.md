@@ -23,11 +23,13 @@ This runbook captures the repeatable workflow for building CPython security rele
 
 ## Preflight checks
 
-- Git available: `git --version`
+- Git available: `git --version` (recommended, not required)
 - Bootstrap Python available: 3.10 or 3.12
 - Visual Studio 2022 Professional (recommended) or Visual Studio 2019 with C++ workload/toolchains installed
 - Windows SDK available (10.0.19041.0 or later)
 - Record the actual SDK version used if PSUB falls forward to a newer installed version
+
+If the source tree comes from an extracted `python.org` archive rather than a Git checkout, Git-related warnings from CPython build steps can be expected and are not automatically build failures.
 
 ## Known issues and fixes
 
@@ -53,6 +55,12 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Root cause: compiled HTML Help documentation was not available before WiX packaging.
 - PSUB now builds and verifies the `.chm` file before running `buildrelease.bat --skip-doc`.
 - If you need to reproduce manually, run `Doc\make.bat htmlhelp` from the CPython source tree after `Tools\msi\get_externals.bat`.
+
+### 5) `pkg_resources` / older Sphinx compatibility in doc venv
+
+- Symptom: documentation environment check reports missing `pkg_resources` even though `setuptools` is installed.
+- Root cause: naive import checks can misread the environment during scripted validation.
+- PSUB now uses a more robust package availability check before deciding whether to install a compatible `setuptools<81`.
 
 ## Evidence to keep
 

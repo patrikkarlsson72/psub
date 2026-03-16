@@ -54,7 +54,7 @@ PSUB/
   - Visual Studio 2019 remains supported as a fallback
 - Windows 10 SDK (10.0.19041.0 or later)
 - Bootstrap Python (3.10 or 3.12)
-- Git for Windows (required for MSI installer build)
+- Git for Windows (recommended for repo operations and build metadata, but not required to run PSUB)
 - .NET Framework 3.5 (includes .NET 2.0 and 3.0), required for legacy WiX/MSI builds (notably Python 3.10)
 
 PSUB prefers the requested SDK version when it is installed, but will automatically fall forward to a compatible installed Windows SDK version when needed. In the web UI, the detected SDK version is used to prefill the build setting.
@@ -81,7 +81,7 @@ Then open your browser to `http://localhost:8080`
 
 **Web UI Features:**
 - ✅ **Automated Prerequisites Checker** - Verifies Visual Studio, Windows SDK, and Bootstrap Python
-- ✅ **Git Detection** - Verifies Git for Windows is installed and available on PATH
+- ✅ **Git Detection** - Shows whether Git for Windows is available on PATH, but does not block the build
 - 📚 **Interactive Documentation Viewer** - Access setup guides directly from the UI
 - 🔧 **Build Configuration** - Configure build parameters through a web interface
 - 📊 **Real-time Build Status** - Monitor build progress and logs
@@ -89,6 +89,8 @@ Then open your browser to `http://localhost:8080`
 The documentation guides are rendered as formatted HTML with proper styling for easy reading.
 
 For Python 3.10 release builds, PSUB also prepares the compiled HTML Help (`.chm`) documentation before the MSI packaging step so that `doc.msi` can be produced reliably on a fresh machine.
+
+PSUB was also verified on a clean Windows machine using `Visual Studio Professional 2022`, a python.org bootstrap install of `Python 3.12`, and current `3.10`, `3.11`, and `3.12` source releases.
 
 ## 📚 Documentation
 

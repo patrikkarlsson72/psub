@@ -1,151 +1,130 @@
-# Setting Up Git for Python Builds
+# Setting Up Git for Windows
 
-This guide will help you install and configure Git for Windows, which is required for building Python security releases.
+This guide explains when Git for Windows is useful with PSUB, why it is recommended, and why it is no longer treated as a hard prerequisite.
 
-## Why Git is Required
+## Short answer
 
-Git is used during the MSI installer build process to:
-- Embed version control information in the installer
-- Determine the exact source version and commit
-- Generate build metadata
-- Track source provenance
+`Git for Windows` is recommended for PSUB, but it is not required to start the PSUB UI or to run a normal build from an extracted `python.org` source archive.
 
-Without Git, the `buildrelease.bat` script will fail with "Cannot find Git on PATH" error.
+You should still install Git if you want to:
 
-## Download Git for Windows
+- clone or update the PSUB repository
+- use normal repository workflows on the build machine
+- capture extra build metadata when tools try to read Git information
+
+## Why Git is recommended
+
+Git helps in three practical ways:
+
+1. It lets you clone and update the PSUB repository normally.
+2. It provides a familiar toolchain on Windows build machines.
+3. Some CPython build steps try to read Git metadata and may emit informational warnings if Git is available but the source tree is not itself a Git checkout.
+
+## Why Git is not a strict PSUB requirement
+
+PSUB usually builds from extracted source archives such as:
+
+```text
+C:\src\Python-3.11.15\Python-3.11.15
+```
+
+That source tree is normally **not** a Git repository. In that workflow:
+
+- PSUB can still run the build successfully
+- CPython build tooling may print Git-related warnings
+- those warnings do not block a successful release build
+
+PSUB's own build script only uses Git opportunistically for metadata capture when it is available.
+
+## What the PSUB UI now does
+
+In the prerequisites panel:
+
+- `Git for Windows` is shown as **Recommended**
+- missing Git is shown as optional rather than blocking
+- overall environment readiness no longer depends on Git being installed
+
+This matches the real-world verified flow on a clean machine.
+
+## When you should install Git anyway
+
+Install Git for Windows if any of these apply:
+
+- you want to clone PSUB directly from GitHub
+- you want normal `git status`, `git pull`, or `git push` workflows on the machine
+- you want to inspect build-related metadata more easily
+- the machine is a long-lived maintenance workstation rather than a minimal release-only box
+
+## Install Git for Windows
 
 1. Download Git for Windows from: **https://git-scm.com/download/win**
-2. Choose the **64-bit** installer (recommended)
+2. Choose the **64-bit** installer
 3. Run the installer
 
-## Installation Steps
+## Recommended installer choice
 
-### 1. Start the Installer
+When you reach the PATH screen, select:
 
-Run the downloaded installer as Administrator (recommended)
+**`Git from the command line and also from 3rd-party software`**
 
-### 2. Select Components
+That makes Git available to:
 
-Keep the default selections:
-- ✅ Windows Explorer integration
-- ✅ Git Bash Here
-- ✅ Git GUI Here
-- ✅ Associate .git* configuration files
+- PowerShell
+- Command Prompt
+- Visual Studio developer shells
 
-### 3. **Important: Adjusting PATH Environment**
+## Verify installation
 
-When you reach the "Adjusting your PATH environment" screen, select:
-
-**"Git from the command line and also from 3rd-party software"**
-
-This ensures Git is available in PowerShell, CMD, and the Visual Studio build tools.
-
-### 4. Choose HTTPS Transport Backend
-
-Select: **"Use the OpenSSL library"** (default)
-
-### 5. Line Ending Configuration
-
-Select: **"Checkout Windows-style, commit Unix-style line endings"** (default)
-
-### 6. Terminal Emulator
-
-Select: **"Use MinTTY"** (default)
-
-### 7. Complete Installation
-
-- Choose default options for remaining screens
-- Click "Install"
-- Click "Finish"
-
-## Verify Installation
-
-After installation, open a **new** PowerShell or Command Prompt window and verify:
+Open a new PowerShell window and run:
 
 ```powershell
 git --version
 ```
 
-You should see output like:
+Expected result:
+
+```text
+git version 2.x.windows.x
 ```
-git version 2.43.0.windows.1
-```
-
-## Alternative: Install via winget
-
-If you have Windows Package Manager (winget) installed:
-
-```powershell
-winget install --id Git.Git -e --source winget
-```
-
-After installation, restart your terminal and verify with `git --version`
 
 ## Troubleshooting
 
 ### Git not found after installation
 
-**Issue:** Running `git --version` gives "command not found" error
+If `git --version` fails:
 
-**Solution:**
-1. Close all PowerShell/CMD windows
-2. Open a **new** terminal window
-3. If still not found, check if Git is in your PATH:
-   ```powershell
-   $env:PATH -split ';' | Select-String -Pattern 'Git'
-   ```
-4. If Git is not in PATH, manually add it:
-   ```powershell
-   $env:PATH += ";C:\Program Files\Git\cmd"
-   ```
-5. For permanent fix, add Git to System PATH in Environment Variables
+1. Close all terminal windows
+2. Open a new terminal
+3. Check whether Git is on PATH:
 
-### SSL Certificate Errors
+```powershell
+$env:PATH -split ';' | Select-String -Pattern 'Git'
+```
 
-**Issue:** Git operations fail with SSL certificate errors
+4. If needed, add:
 
-**Solution:**
-1. Update Windows certificates:
-   ```powershell
-   certutil -generateSSTFromWU roots.sst
-   ```
-2. Or configure Git to use Windows certificate store:
-   ```bash
-   git config --global http.sslBackend schannel
-   ```
+```text
+C:\Program Files\Git\cmd
+```
 
-### Git works in Git Bash but not PowerShell
+to your PATH.
 
-**Issue:** Git works in Git Bash but not in PowerShell or CMD
+### Git warnings during CPython build
 
-**Solution:**
-This means Git wasn't added to the system PATH during installation. Either:
-1. Reinstall Git and select "Git from the command line and also from 3rd-party software"
-2. Or manually add `C:\Program Files\Git\cmd` to your system PATH
+You may still see warnings such as:
 
-## Verify Git is Ready for Build
+```text
+fatal: not a git repository
+```
 
-To ensure Git is properly configured for the Python build process:
+when building from an extracted CPython source archive.
 
-1. Open **x64 Native Tools Command Prompt for VS 2022** or a normal PowerShell session
-2. Run:
-   ```cmd
-   git --version
-   ```
-3. You should see the Git version number
+That is expected if the source tree came from `python.org` and is not a Git checkout. Those warnings do not by themselves mean the build failed.
 
-If Git is available in the Visual Studio prompt or in normal PowerShell, it will work during the build process.
+## Next steps
 
-## Next Steps
+After Git is installed, or if you choose not to install it, continue with:
 
-Once Git is installed and verified:
-
-1. Return to the [Prerequisites Overview](prerequisites_overview.md)
-2. Verify all other prerequisites are installed
-3. Proceed with the [Minimal Build Guide](python_build_minimal_guide.md)
-
-## Additional Resources
-
-- **Git for Windows Documentation:** https://gitforwindows.org/
-- **Git Official Documentation:** https://git-scm.com/doc
-- **Git Bash Tutorial:** https://www.atlassian.com/git/tutorials/git-bash
+- [Prerequisites Overview](prerequisites_overview.md)
+- [New Machine Setup Guide](new_machine_setup_guide.md)
+- [Minimal Build Guide](python_build_minimal_guide.md)
