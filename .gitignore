@@ -20,6 +20,8 @@ build/
 doc-venv/
 venv/
 .venv/
+output/presentation/.deps/
+output/presentation/.venv/
 
 # Logs
 *.log
