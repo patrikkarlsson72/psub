@@ -16,6 +16,14 @@ From the repository root:
 python .\output\presentation\source\build_psub_operator_guide.py
 ```
 
+Required Python packages:
+
+```powershell
+python -m pip install python-pptx Pillow
+```
+
+Recommended: install those packages in a dedicated presentation virtual environment so the deck build stays isolated from PSUB's release tooling.
+
 The generated file is:
 
 ```text

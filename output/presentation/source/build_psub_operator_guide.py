@@ -85,7 +85,7 @@ def add_title_block(slide, title: str, subtitle: str | None = None):
     r = p.add_run()
     r.text = title
     r.font.name = "Aptos Display"
-    r.font.size = Pt(28)
+    r.font.size = Pt(24 if len(title) > 30 else 28)
     r.font.bold = True
     r.font.color.rgb = COLORS["text"]
 
@@ -97,7 +97,7 @@ def add_title_block(slide, title: str, subtitle: str | None = None):
         r = p.add_run()
         r.text = subtitle
         r.font.name = "Aptos"
-        r.font.size = Pt(14)
+        r.font.size = Pt(13)
         r.font.color.rgb = COLORS["mist"]
 
 
@@ -128,7 +128,8 @@ def add_bullets(slide, items: list[str], left, top, width, height, font_size=18,
         p.text = item
         p.level = 0
         p.bullet = True
-        p.space_after = Pt(8)
+        p.space_after = Pt(5)
+        p.line_spacing = 1.05
         for run in p.runs:
             run.font.name = "Aptos"
             run.font.size = Pt(font_size)
@@ -152,7 +153,41 @@ def add_callout_panel(slide, items: list[str], title="Operator Tips"):
     r.font.size = Pt(15)
     r.font.color.rgb = COLORS["gold"]
 
-    add_bullets(slide, items, Inches(9.95), Inches(1.9), Inches(2.35), Inches(4.4), font_size=14)
+    add_bullets(slide, items, Inches(9.95), Inches(1.9), Inches(2.35), Inches(4.4), font_size=13)
+
+
+def add_highlight_outline(slide, left, top, width, height, label: str):
+    outline = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(left),
+        Inches(top),
+        Inches(width),
+        Inches(height),
+    )
+    outline.fill.background()
+    outline.line.color.rgb = COLORS["gold"]
+    outline.line.width = Pt(2.5)
+
+    label_box = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(left),
+        Inches(top - 0.34),
+        Inches(min(width, 2.95)),
+        Inches(0.3),
+    )
+    label_box.fill.solid()
+    label_box.fill.fore_color.rgb = COLORS["gold"]
+    label_box.line.fill.background()
+    tf = label_box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = label
+    r.font.size = Pt(10)
+    r.font.bold = True
+    r.font.color.rgb = COLORS["dark_text"]
+    p.alignment = PP_ALIGN.CENTER
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 
 
 def add_picture_cover(slide, image_path: Path, left, top, width, height):
@@ -193,6 +228,72 @@ def add_screenshot_frame(slide, image_path: Path):
     add_picture_cover(slide, image_path, Inches(0.73), Inches(2.0), Inches(8.2), Inches(4.5))
 
 
+def add_proof_points(slide, items: list[dict[str, str]]):
+    card_lefts = (Inches(0.72), Inches(3.38), Inches(6.04))
+    for index, item in enumerate(items[:3]):
+        card = slide.shapes.add_shape(
+            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+            card_lefts[index],
+            Inches(2.05),
+            Inches(2.35),
+            Inches(1.4),
+        )
+        card.fill.solid()
+        card.fill.fore_color.rgb = COLORS["slate"]
+        card.line.color.rgb = COLORS["steel"]
+
+        label_box = slide.shapes.add_textbox(card.left + Inches(0.22), card.top + Inches(0.16), Inches(1.75), Inches(0.28))
+        tf = label_box.text_frame
+        tf.clear()
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = item["label"]
+        r.font.size = Pt(12)
+        r.font.bold = True
+        r.font.color.rgb = COLORS["gold"]
+
+        value_box = slide.shapes.add_textbox(card.left + Inches(0.22), card.top + Inches(0.46), Inches(1.75), Inches(0.66))
+        tf = value_box.text_frame
+        tf.clear()
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = item["value"]
+        r.font.name = "Aptos Display"
+        r.font.size = Pt(15)
+        r.font.bold = True
+        r.font.color.rgb = COLORS["text"]
+        p.alignment = PP_ALIGN.LEFT
+
+
+def add_body_panel(slide, items: list[str], title="Key Points"):
+    panel = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(0.72),
+        Inches(3.95),
+        Inches(8.1),
+        Inches(2.55),
+    )
+    panel.fill.solid()
+    panel.fill.fore_color.rgb = COLORS["slate"]
+    panel.line.color.rgb = COLORS["steel"]
+
+    heading = slide.shapes.add_textbox(Inches(1.0), Inches(4.13), Inches(2.1), Inches(0.35))
+    tf = heading.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = title
+    r.font.bold = True
+    r.font.size = Pt(15)
+    r.font.color.rgb = COLORS["gold"]
+
+    body_font_size = 13 if len(items) > 3 else 14
+    add_bullets(slide, items, Inches(1.0), Inches(4.5), Inches(7.72), Inches(1.7), font_size=body_font_size)
+
+
 def render_hero_slide(prs, spec, slide_number: int):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     image_path = (PRESENTATION_DIR / spec["image"]).resolve()
@@ -220,17 +321,23 @@ def render_timeline_slide(prs, spec, slide_number: int):
     add_top_band(slide)
     add_title_block(slide, spec["title"], spec.get("subtitle"))
 
-    start_left = Inches(0.75)
-    step_width = Inches(1.43)
+    steps = spec.get("body", [])
+    step_count = max(len(steps), 1)
+    available_width = Inches(8.2)
+    bubble_width = min(Inches(1.15), available_width / step_count - Inches(0.12))
+    step_gap = (available_width - bubble_width) / max(step_count - 1, 1)
+    start_left = Inches(0.78)
     line_top = Inches(3.15)
-    connector = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(1.2), line_top, Inches(10.9), Inches(0.06))
+    connector_left = start_left + bubble_width / 2
+    connector_width = step_gap * max(step_count - 1, 1)
+    connector = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, connector_left, line_top, connector_width, Inches(0.06))
     connector.fill.solid()
     connector.fill.fore_color.rgb = COLORS["steel"]
     connector.line.fill.background()
 
-    for idx, step in enumerate(spec.get("body", []), start=1):
-        left = start_left + step_width * (idx - 1)
-        bubble = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.55), Inches(1.15), Inches(1.15))
+    for idx, step in enumerate(steps, start=1):
+        left = start_left + step_gap * (idx - 1)
+        bubble = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.55), bubble_width, Inches(1.0))
         bubble.fill.solid()
         bubble.fill.fore_color.rgb = COLORS["blue"] if idx % 2 else COLORS["steel"]
         bubble.line.fill.background()
@@ -245,14 +352,15 @@ def render_timeline_slide(prs, spec, slide_number: int):
         p.alignment = PP_ALIGN.CENTER
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 
-        text = slide.shapes.add_textbox(left - Inches(0.15), Inches(3.85), Inches(1.45), Inches(1.3))
+        text = slide.shapes.add_textbox(left - Inches(0.12), Inches(3.72), bubble_width + Inches(0.24), Inches(1.05))
         tf = text.text_frame
         tf.clear()
+        tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = step
         p.alignment = PP_ALIGN.CENTER
         for run in p.runs:
-            run.font.size = Pt(12)
+            run.font.size = Pt(10.5)
             run.font.color.rgb = COLORS["text"]
 
     add_callout_panel(slide, spec.get("callouts", []))
@@ -283,7 +391,7 @@ def render_checklist_slide(prs, spec, slide_number: int):
         p = tf.paragraphs[0]
         p.text = item
         for run in p.runs:
-            run.font.size = Pt(17)
+            run.font.size = Pt(15.5)
             run.font.color.rgb = COLORS["text"]
 
     add_callout_panel(slide, spec.get("callouts", []), title="Requirements")
@@ -297,7 +405,16 @@ def render_image_focus_slide(prs, spec, slide_number: int):
     add_title_block(slide, spec["title"], spec.get("subtitle"))
     image_path = (PRESENTATION_DIR / spec["image"]).resolve()
     add_screenshot_frame(slide, image_path)
-    add_callout_panel(slide, spec.get("body", []) + spec.get("callouts", []))
+    for highlight in spec.get("highlights", []):
+        add_highlight_outline(
+            slide,
+            highlight["left"],
+            highlight["top"],
+            highlight["width"],
+            highlight["height"],
+            highlight["label"],
+        )
+    add_callout_panel(slide, spec.get("body", []) + spec.get("callouts", []), title=spec.get("panel_title", "Operator Tips"))
     add_footer(slide, slide_number)
 
 
@@ -324,6 +441,17 @@ def render_two_column_slide(prs, spec, slide_number: int):
     add_footer(slide, slide_number)
 
 
+def render_proof_points_slide(prs, spec, slide_number: int):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_full_bleed_background(slide)
+    add_top_band(slide)
+    add_title_block(slide, spec["title"], spec.get("subtitle"))
+    add_proof_points(slide, spec.get("proof_points", []))
+    add_body_panel(slide, spec.get("body", []), title=spec.get("body_title", "Key Points"))
+    add_callout_panel(slide, spec.get("callouts", []), title=spec.get("panel_title", "Operator Angle"))
+    add_footer(slide, slide_number)
+
+
 def build_presentation():
     specs = load_manifest()
     prs = Presentation()
@@ -336,6 +464,7 @@ def build_presentation():
         "checklist": render_checklist_slide,
         "image-focus": render_image_focus_slide,
         "two-column": render_two_column_slide,
+        "proof-points": render_proof_points_slide,
     }
 
     for index, spec in enumerate(specs, start=1):
