@@ -34,7 +34,7 @@ Install:
 ## Git for Windows
 Install Git and ensure it's in your PATH:
 - Download from: https://git-scm.com/download/win
-- Required for the MSI installer build process
+- Recommended for repo operations and PSUB build metadata
 - Verify installation: `git --version`
 
 ---

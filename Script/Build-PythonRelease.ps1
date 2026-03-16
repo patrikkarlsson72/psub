@@ -772,8 +772,10 @@ function Ensure-DocBuildCompatibility {
         throw $errorMsg
     }
 
+    $pkgResourcesCheck = "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pkg_resources') else 1)"
+
     try {
-        & $venvPython -c "import pkg_resources" 2>$null
+        & $venvPython -c $pkgResourcesCheck *> $null
         if ($LASTEXITCODE -eq 0) {
             return
         }
@@ -790,7 +792,7 @@ function Ensure-DocBuildCompatibility {
     }
 
     try {
-        & $venvPython -c "import pkg_resources" 2>$null
+        & $venvPython -c $pkgResourcesCheck *> $null
         if ($LASTEXITCODE -ne 0) {
             throw "pkg_resources still unavailable"
         }

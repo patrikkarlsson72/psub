@@ -588,8 +588,9 @@ function Invoke-PrerequisitesHandler {
             Installed = $git.Installed
             Version = $git.Version
             Path = $git.Path
+            Recommended = $true
         }
-        AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0) -and $git.Installed)
+        AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0))
     }
     
     Write-Host "[DEBUG] Bootstrap Python result: Found=$($result.BootstrapPython.Found), Versions count=$($result.BootstrapPython.Versions.Count)" -ForegroundColor Cyan
@@ -1915,15 +1916,15 @@ function Get-HtmlUI {
                     '</div>';
 
                 // Git for Windows
-                const gitStatus = data.Git.Installed ? 'ready' : 'not-ready';
-                const gitIcon = data.Git.Installed ? 'ready' : 'not-ready';
-                const gitMsg = data.Git.Installed ? (data.Git.Version || 'Installed') : 'Not Found';
+                const gitStatus = data.Git.Installed ? 'ready' : 'warning';
+                const gitIcon = data.Git.Installed ? 'ready' : 'warning';
+                const gitMsg = data.Git.Installed ? (data.Git.Version || 'Installed') : 'Optional - Not Found';
                 let gitHelpLink = '';
                 if (!data.Git.Installed) {
                     gitHelpLink = '<a href="/api/docs/setup_git" target="_blank" class="help-link">Setup Guide</a>';
                 }
                 html += '<div class="prereq-item ' + gitStatus + '">' +
-                    '<div class="prereq-label"><span class="status-icon ' + gitIcon + '"></span><span>Git for Windows</span></div>' +
+                    '<div class="prereq-label"><span class="status-icon ' + gitIcon + '"></span><span>Git for Windows (Recommended)</span></div>' +
                     '<div class="prereq-value">' + gitMsg + gitHelpLink + '</div>' +
                     '</div>';
 
@@ -1931,8 +1932,7 @@ function Get-HtmlUI {
                     data.VisualStudio.Installed,
                     data.MSVCToolchains.AllPresent,
                     data.WindowsSDK.Installed,
-                    data.BootstrapPython.Found,
-                    data.Git.Installed
+                    data.BootstrapPython.Found
                 ];
                 const missingCount = checks.filter(x => !x).length;
                 

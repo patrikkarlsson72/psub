@@ -12,7 +12,7 @@ Before starting a build, ensure you have:
 - `Visual Studio 2019` remains supported as a compatibility fallback
 - `Windows 10 SDK` (version 10.0.19041.0 or later)
 - `Bootstrap Python` (3.10 or 3.12, not 3.13)
-- `Git for Windows` (required for MSI installer build)
+- `Git for Windows` (recommended for repo operations and build metadata, but not required to start PSUB)
 - `.NET Framework 3.5` (includes .NET 2.0 and 3.0, required for legacy WiX/MSI flows such as Python 3.10)
 - `CPython source code` (extracted to a local directory)
 
@@ -38,7 +38,7 @@ For detailed installation instructions, see:
    - Path configuration
 
 4. **[Git Setup](setup_git.md)**
-   - Required for MSI installer build
+   - Recommended for repo operations and metadata capture
    - Installation methods
    - Verification steps
 
@@ -56,7 +56,7 @@ The PSUB web UI prerequisites checker should verify:
 - Bootstrap Python (3.10 or 3.12) is available
 - .NET Framework 3.5 is enabled when legacy WiX/MSI build path is used
 
-Note: Git detection is automated in the UI and included in the overall readiness check.
+Note: Git detection is automated in the UI and shown as recommended, but it does not block the overall readiness check.
 
 Note: The UI should also prefill the detected Windows SDK version in build settings, rather than always leaving the legacy minimum value in the input.
 
@@ -76,7 +76,7 @@ Recommended installation order:
 1. Install Visual Studio 2022 Professional with required components
 2. Verify Windows SDK is installed (usually included with VS)
 3. Install Bootstrap Python (3.10 or 3.12)
-4. Install Git for Windows
+4. Install Git for Windows (recommended)
 5. Enable .NET Framework 3.5 in Windows Features
 6. Extract CPython source code
 7. Run PSUB and check prerequisites
