@@ -4,6 +4,7 @@
     "subtitle": "A faster, safer path for Windows Python security release builds",
     "layout": "hero",
     "image": "../../assets/background.png",
+    "hero_screenshot": "screenshots/Home.png",
     "callouts": [
       "Validated on Python 3.10.x, 3.11.x, and 3.12.x"
     ],
@@ -63,26 +64,28 @@
       "MSVC toolchains for x64, x86, and ARM64",
       "Windows 10 SDK 10.0.19041.0 or later",
       "Bootstrap Python 3.10 or 3.12",
-      "Git for Windows on PATH",
+      "Git for Windows on PATH (recommended)",
       ".NET Framework 3.5 for legacy Python 3.10 MSI flows"
     ],
     "callouts": [
       "PSUB links missing prerequisites directly to setup guides.",
+      "Git is useful for repo workflows and metadata, but it no longer blocks readiness.",
       "Do not use Microsoft Store alias paths or Python 3.13 as bootstrap."
     ]
   },
   {
-    "title": "Live UI Walkthrough",
-    "subtitle": "Only a few fields matter for a clean run",
+    "title": "Configure The Run",
+    "subtitle": "These are the settings operators actually need to touch",
     "layout": "image-focus",
     "body": [
-      "Use Auto-Detect to fill Bootstrap Python",
-      "Confirm SourcePath and doc-venv",
-      "Start Build opens a separate live terminal"
+      "Keep the doc-venv name stable unless you have a reason to change it",
+      "Confirm the release output folder and detected Windows SDK",
+      "Set SourcePath and Bootstrap Python before launch",
+      "Start Build opens a separate terminal with live output"
     ],
-    "image": "screenshots/04-build-configuration.png",
+    "image": "screenshots/configuration-settings.png",
     "callouts": [
-      "Focus on the build form, not every control in the page."
+      "The UI is doing most of the environment work for the operator."
     ],
     "panel_title": "Operator Focus"
   },
@@ -94,7 +97,8 @@
       "Visual Studio Professional 2022 now works end-to-end on a new machine",
       "Bootstrap autodetect rejects WindowsApps aliases and finds real Python installs",
       "The Windows SDK field now prefills from autodetect instead of a stale default",
-      "Python 3.10 MSI/doc handling and artifact naming are now more robust"
+      "Python 3.10 MSI/doc handling and artifact naming are now more robust",
+      "Git is now treated as recommended rather than a hard blocker in the UI"
     ],
     "callouts": [
       "These were practical fixes discovered during a fresh-machine setup, not just theoretical cleanup."
@@ -119,18 +123,18 @@
     "subtitle": "Most blocked runs still fall into a short fixable list",
     "layout": "two-column",
     "body": [
-      "Git missing from PATH",
       "Windows SDK or MSVC toolchains incomplete",
       "Wrong bootstrap Python version or alias path",
       "Missing doc-venv or Sphinx dependencies",
-      "Python 3.10 WiX or .NET 3.5 dependency issue"
+      "Python 3.10 WiX or .NET 3.5 dependency issue",
+      "Git warnings from non-Git CPython source trees"
     ],
     "callouts": [
-      "Install Git for Windows and reopen the shell.",
       "Use the setup guides linked by the prerequisites panel.",
       "Switch to a real Python 3.10 or 3.12 executable.",
       "Run Setup Virtual Environment before retrying.",
-      "Enable .NET Framework 3.5 for older 3.10 MSI flows."
+      "Enable .NET Framework 3.5 for older 3.10 MSI flows.",
+      "Treat Git warnings as informational when building from extracted python.org archives."
     ]
   },
   {

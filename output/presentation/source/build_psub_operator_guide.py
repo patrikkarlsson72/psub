@@ -305,13 +305,84 @@ def render_hero_slide(prs, spec, slide_number: int):
     overlay.fill.transparency = 0.28
     overlay.line.fill.background()
 
-    accent = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(0.68), Inches(0.95), Inches(1.65), Inches(0.09))
+    accent = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(0.72), Inches(0.98), Inches(1.4), Inches(0.08))
     accent.fill.solid()
     accent.fill.fore_color.rgb = COLORS["gold"]
     accent.line.fill.background()
 
-    add_title_block(slide, spec["title"], spec.get("subtitle"))
-    add_chip(slide, spec["callouts"][0], Inches(0.7), Inches(5.95), Inches(3.55))
+    title_box = slide.shapes.add_textbox(Inches(0.72), Inches(0.72), Inches(5.6), Inches(0.95))
+    tf = title_box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = spec["title"]
+    r.font.name = "Aptos Display"
+    r.font.size = Pt(27)
+    r.font.bold = True
+    r.font.color.rgb = COLORS["text"]
+
+    subtitle_box = slide.shapes.add_textbox(Inches(0.78), Inches(1.68), Inches(5.5), Inches(0.65))
+    tf = subtitle_box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = spec.get("subtitle", "")
+    r.font.name = "Aptos"
+    r.font.size = Pt(13)
+    r.font.color.rgb = COLORS["mist"]
+
+    hero_shot = spec.get("hero_screenshot")
+    if hero_shot:
+        shot_shadow = slide.shapes.add_shape(
+            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+            Inches(6.45),
+            Inches(1.18),
+            Inches(6.1),
+            Inches(4.55),
+        )
+        shot_shadow.fill.solid()
+        shot_shadow.fill.fore_color.rgb = RGBColor(4, 10, 18)
+        shot_shadow.fill.transparency = 0.42
+        shot_shadow.line.fill.background()
+        slide.shapes._spTree.remove(shot_shadow._element)
+        slide.shapes._spTree.insert(2, shot_shadow._element)
+
+        shot_frame = slide.shapes.add_shape(
+            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+            Inches(6.3),
+            Inches(1.02),
+            Inches(6.1),
+            Inches(4.55),
+        )
+        shot_frame.fill.solid()
+        shot_frame.fill.fore_color.rgb = RGBColor(248, 250, 252)
+        shot_frame.line.color.rgb = COLORS["steel"]
+
+        shot_header = slide.shapes.add_shape(
+            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+            Inches(6.55),
+            Inches(1.24),
+            Inches(1.1),
+            Inches(0.28),
+        )
+        shot_header.fill.solid()
+        shot_header.fill.fore_color.rgb = COLORS["gold"]
+        shot_header.line.fill.background()
+        tf = shot_header.text_frame
+        tf.clear()
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = "Web UI"
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = COLORS["dark_text"]
+        p.alignment = PP_ALIGN.CENTER
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        shot_path = (PRESENTATION_DIR / hero_shot).resolve()
+        add_picture_cover(slide, shot_path, Inches(6.48), Inches(1.46), Inches(5.72), Inches(3.82))
+
+    add_chip(slide, spec["callouts"][0], Inches(0.74), Inches(5.9), Inches(3.55))
     add_footer(slide, slide_number)
 
 
