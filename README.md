@@ -4,6 +4,12 @@ PSUB is a PowerShell toolkit for building Python 3.10, 3.11, and 3.12 security r
 
 This repository is organized as a practical build tool first. The README is intentionally short and focused on getting started quickly.
 
+## Quick Overview
+
+- Windows-based toolkit for Python security release builds
+- Supports Python `3.10`, `3.11`, and `3.12`
+- Includes both a CLI workflow and a local web UI
+
 ## Required Project Layout
 
 Keep these folders together in the same relative structure:
