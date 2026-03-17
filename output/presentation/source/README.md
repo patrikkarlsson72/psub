@@ -2,11 +2,14 @@
 
 This folder contains the reproducible source for the PSUB operator presentation.
 
+The source files in this folder are intended to stay in the repository.
+The generated `.pptx` file and local screenshots under `output\presentation\screenshots\` are treated as local-only presentation assets and are ignored by Git.
+
 ## Files
 
 - `slide_manifest.json` contains the slide-by-slide content.
 - `build_psub_operator_guide.py` renders the final `.pptx`.
-- `../screenshots/` contains the real UI captures used in the deck.
+- `../screenshots/` contains local UI captures used in the deck.
 
 ## Regenerate the deck
 
@@ -30,7 +33,11 @@ The generated file is:
 output\presentation\PSUB-Operator-Guide.pptx
 ```
 
+Note: the generated `.pptx` is intentionally ignored by Git.
+
 ## Screenshot set expected by the generator
+
+These screenshot files are expected locally, but they are intentionally not tracked in the public repository:
 
 - `output\presentation\screenshots\01-home-overview.png`
 - `output\presentation\screenshots\02-prerequisites-panel.png`

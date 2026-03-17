@@ -22,6 +22,8 @@ venv/
 .venv/
 output/presentation/.deps/
 output/presentation/.venv/
+output/presentation/PSUB-Operator-Guide.pptx
+output/presentation/screenshots/
 
 # Logs
 *.log
