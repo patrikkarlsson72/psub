@@ -1,137 +1,75 @@
 # PSUB - Python Security Update Builder
 
-A PowerShell-based toolkit for building Python security releases (3.10, 3.11, 3.12) on Windows for enterprise deployment.
+PSUB is a PowerShell toolkit for building Python 3.10, 3.11, and 3.12 security releases on Windows. It provides a command-line build script and a simple local web UI for running builds with the required Windows toolchain.
 
-## Purpose
+This repository is organized as a practical build tool first. The README is intentionally short and focused on getting started quickly.
 
-PSUB simplifies the process of building custom Python security releases from source, generating enterprise-ready installers (EXE + MSI) with all necessary components.
+## Required Project Layout
 
-## What's Included
-
-- **Build-PythonRelease.ps1** - Core build automation script
-- **Build-PythonRelease-UI-Simple.ps1** - Web-based UI for easier build management
-- **Documentation** - Step-by-step guides with interactive web viewer
-- **Prerequisites Checker** - Automated verification of required tools
-
-## Installation & Deployment
-
-### Folder Structure
-
-To run PSUB, keep the required runtime files together in the same relative structure:
+Keep these folders together in the same relative structure:
 
 ```text
 PSUB/
 |-- Script/
-|   |-- Build-PythonRelease-UI-Simple.ps1
-|   `-- Build-PythonRelease.ps1
 |-- documentation/
-|   |-- prerequisites_overview.md
-|   |-- setup_visual_studio.md
-|   |-- setup_windows_sdk.md
-|   |-- setup_bootstrap_python.md
-|   |-- setup_git.md
-|   `-- python_build_minimal_guide.md
 `-- assets/
-    `-- background.png
 ```
 
-Required to run the app:
+`output/` and log files are local runtime artifacts and do not need special handling in this README.
 
-- `Script/`
-- `documentation/`
-- `assets/`
+## Prerequisites
 
-Not required just to run PSUB:
+Before starting a build, make sure the machine has:
 
-- `output/`
-- `logs/`
-- `skills/`
-- local presentation files and workstation-specific artifacts
+- Visual Studio 2022 with the required C++ toolchain components
+- Visual Studio 2019 only if you need the fallback path
+- Windows 10 SDK `10.0.19041.0` or later
+- Bootstrap Python `3.10` or `3.12`
+- Git for Windows if you want repo operations and build metadata support
+- .NET Framework 3.5 for legacy WiX/MSI build flows such as Python 3.10
 
-### Installing on Another Machine
-
-1. **Copy the required PSUB folders** to the target machine and keep their relative structure
-2. The folder can be placed anywhere (e.g., `C:\Tools\PSUB` or `D:\PythonBuilder\PSUB`)
-3. Run the scripts from within the `Script/` folder, or use absolute paths
-
-**Important:** Do not move `Script`, `documentation`, or `assets` separately from one another. Those runtime folders must remain in their relative positions.
+For the full checklist and setup details, see [documentation/prerequisites_overview.md](documentation/prerequisites_overview.md).
 
 ## Quick Start
 
-### Prerequisites
+### 1. Prepare CPython source
 
-- Visual Studio 2022 (Professional recommended; Community/Enterprise also supported)
-  - Desktop development with C++
-  - Python development workload (optional)
-  - MSVC toolsets for x64/x86 and ARM64
-  - Visual Studio 2019 remains supported as a fallback
-- Windows 10 SDK (10.0.19041.0 or later)
-- Bootstrap Python (3.10 or 3.12)
-- Git for Windows (recommended for repo operations and build metadata, but not required to run PSUB)
-- .NET Framework 3.5 (includes .NET 2.0 and 3.0), required for legacy WiX/MSI builds (notably Python 3.10)
+Extract the CPython source tree to a local folder, for example:
 
-PSUB prefers the requested SDK version when it is installed, but will automatically fall forward to a compatible installed Windows SDK version when needed. In the web UI, the detected SDK version is used to prefill the build setting.
+```powershell
+C:\src\Python-3.11.14\Python-3.11.14
+```
 
-### Basic Usage
+### 2. Run the CLI build
 
-1. Extract CPython source to a directory (e.g., `C:\src\Python-3.11.14`)
-
-2. Run the build script:
+From the repository root:
 
 ```powershell
 .\Script\Build-PythonRelease.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14"
 ```
 
-### Using the Web UI
+Useful optional parameters include:
 
-The web UI provides a user-friendly interface with automated checks and documentation:
+- `-BootstrapPython` to point to the Python used for helper scripts
+- `-VenvName` to control the documentation virtual environment folder
+- `-ReleaseRoot` to choose where collected release output is stored
+- `-WinSdkVersion` to request a specific installed Windows SDK version
+
+### 3. Or start the web UI
 
 ```powershell
 .\Script\Build-PythonRelease-UI-Simple.ps1 -Port 8080
 ```
 
-Then open your browser to `http://localhost:8080`
+Then open `http://localhost:8080` in your browser.
 
-**Web UI Features:**
-- **Automated Prerequisites Checker** - Verifies Visual Studio, Windows SDK, and Bootstrap Python
-- **Git Detection** - Shows whether Git for Windows is available on PATH, but does not block the build
-- **Interactive Documentation Viewer** - Access setup guides directly from the UI
-- **Build Configuration** - Configure build parameters through a web interface
-- **Real-time Build Status** - Monitor build progress and logs
+The UI helps you check prerequisites, read the local documentation, configure build settings, and monitor build progress.
 
-The documentation guides are rendered as formatted HTML with proper styling for easy reading.
+## More Documentation
 
-For Python 3.10 release builds, PSUB also prepares the compiled HTML Help (`.chm`) documentation before the MSI packaging step so that `doc.msi` can be produced reliably on a fresh machine.
-
-PSUB was also verified on a clean Windows machine using `Visual Studio Professional 2022`, a python.org bootstrap install of `Python 3.12`, and current `3.10`, `3.11`, and `3.12` source releases.
-
-## Documentation
-
-### Available Guides
-
-- **[Prerequisites Overview](documentation/prerequisites_overview.md)** - Complete checklist of required tools
-- **[Visual Studio Setup](documentation/setup_visual_studio.md)** - Installing and configuring VS 2022/2019
-- **[Windows SDK Setup](documentation/setup_windows_sdk.md)** - Installing the required SDK version
-- **[Bootstrap Python Setup](documentation/setup_bootstrap_python.md)** - Installing Python for build scripts
-- **[Git Setup](documentation/setup_git.md)** - Installing Git for Windows
-- **[Minimal Build Guide](documentation/python_build_minimal_guide.md)** - Step-by-step build instructions
-
-All documentation is accessible through the web UI at `/api/docs/<guide-name>` or directly from the `documentation/` folder.
-
-### Release Operations
-
-- **[Release Runbook](documentation/release_runbook.md)** - End-to-end operational flow for source download, verification, build, and evidence capture
-- **[Release Record Template](documentation/release_record_template.md)** - Reusable template for recording each release run
-- **[Session Notes (2026-02-27)](documentation/session_notes_2026-02-27.md)** - Summary of recent troubleshooting and release preparation
-- **[PSUB Release Ops Skill](skills/psub-release-ops/SKILL.md)** - Local skill for repeatable release checks, downloads, builds, and troubleshooting
-
-## Output
-
-The build process generates:
-- `python-<version>-amd64.exe` - Main installer
-- `core.msi`, `pip.msi`, `path.msi`, `tcltk.msi`, `dev.msi`, `doc.msi` - Component installers
-- `python-<version>-embed-amd64.zip` - Embeddable distribution
-- `Python-<version>_<timestamp>.zip` - PSUB archive of the collected release output under `C:\python-releases`
+- [documentation/prerequisites_overview.md](documentation/prerequisites_overview.md)
+- [documentation/python_build_minimal_guide.md](documentation/python_build_minimal_guide.md)
+- [documentation/release_runbook.md](documentation/release_runbook.md)
 
 ## Supported Python Versions
 
@@ -141,15 +79,4 @@ The build process generates:
 
 ## License
 
-This project is provided as-is for building Python distributions. Please ensure compliance with [Python's license](https://docs.python.org/3/license.html) when distributing built binaries.
-
-## Contributing
-
-Contributions welcome! Please feel free to submit issues or pull requests.
-
-## Acknowledgments
-
-Built to simplify Python security release deployment in enterprise environments.
-
-
-
+This project is provided as-is for building Python distributions. When distributing built binaries, ensure compliance with the [Python license](https://docs.python.org/3/license.html).
