@@ -2,48 +2,61 @@
 
 A PowerShell-based toolkit for building Python security releases (3.10, 3.11, 3.12) on Windows for enterprise deployment.
 
-## 🎯 Purpose
+## Purpose
 
 PSUB simplifies the process of building custom Python security releases from source, generating enterprise-ready installers (EXE + MSI) with all necessary components.
 
-## 📦 What's Included
+## What's Included
 
 - **Build-PythonRelease.ps1** - Core build automation script
 - **Build-PythonRelease-UI-Simple.ps1** - Web-based UI for easier build management
 - **Documentation** - Step-by-step guides with interactive web viewer
 - **Prerequisites Checker** - Automated verification of required tools
 
-## 📁 Installation & Deployment
+## Installation & Deployment
 
 ### Folder Structure
 
-PSUB requires a specific folder structure. The entire project folder can be placed anywhere on your system, but the relative structure must be maintained:
+To run PSUB, keep the required runtime files together in the same relative structure:
 
-```
+```text
 PSUB/
-├── Script/
-│   ├── Build-PythonRelease-UI-Simple.ps1
-│   └── Build-PythonRelease.ps1
-├── documentation/
-│   ├── prerequisites_overview.md
-│   ├── setup_visual_studio.md
-│   ├── setup_windows_sdk.md
-│   ├── setup_bootstrap_python.md
-│   ├── setup_git.md
-│   └── python_build_minimal_guide.md
-└── assets/
-    └── (background images and other assets)
+|-- Script/
+|   |-- Build-PythonRelease-UI-Simple.ps1
+|   `-- Build-PythonRelease.ps1
+|-- documentation/
+|   |-- prerequisites_overview.md
+|   |-- setup_visual_studio.md
+|   |-- setup_windows_sdk.md
+|   |-- setup_bootstrap_python.md
+|   |-- setup_git.md
+|   `-- python_build_minimal_guide.md
+`-- assets/
+    `-- background.png
 ```
+
+Required to run the app:
+
+- `Script/`
+- `documentation/`
+- `assets/`
+
+Not required just to run PSUB:
+
+- `output/`
+- `logs/`
+- `skills/`
+- local presentation files and workstation-specific artifacts
 
 ### Installing on Another Machine
 
-1. **Copy the entire PSUB folder** to the target machine (maintain the folder structure)
+1. **Copy the required PSUB folders** to the target machine and keep their relative structure
 2. The folder can be placed anywhere (e.g., `C:\Tools\PSUB` or `D:\PythonBuilder\PSUB`)
 3. Run the scripts from within the `Script/` folder, or use absolute paths
 
-**Important:** Do not move individual scripts or folders separately - they must remain in their relative positions.
+**Important:** Do not move `Script`, `documentation`, or `assets` separately from one another. Those runtime folders must remain in their relative positions.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -80,11 +93,11 @@ The web UI provides a user-friendly interface with automated checks and document
 Then open your browser to `http://localhost:8080`
 
 **Web UI Features:**
-- ✅ **Automated Prerequisites Checker** - Verifies Visual Studio, Windows SDK, and Bootstrap Python
-- ✅ **Git Detection** - Shows whether Git for Windows is available on PATH, but does not block the build
-- 📚 **Interactive Documentation Viewer** - Access setup guides directly from the UI
-- 🔧 **Build Configuration** - Configure build parameters through a web interface
-- 📊 **Real-time Build Status** - Monitor build progress and logs
+- **Automated Prerequisites Checker** - Verifies Visual Studio, Windows SDK, and Bootstrap Python
+- **Git Detection** - Shows whether Git for Windows is available on PATH, but does not block the build
+- **Interactive Documentation Viewer** - Access setup guides directly from the UI
+- **Build Configuration** - Configure build parameters through a web interface
+- **Real-time Build Status** - Monitor build progress and logs
 
 The documentation guides are rendered as formatted HTML with proper styling for easy reading.
 
@@ -92,7 +105,7 @@ For Python 3.10 release builds, PSUB also prepares the compiled HTML Help (`.chm
 
 PSUB was also verified on a clean Windows machine using `Visual Studio Professional 2022`, a python.org bootstrap install of `Python 3.12`, and current `3.10`, `3.11`, and `3.12` source releases.
 
-## 📚 Documentation
+## Documentation
 
 ### Available Guides
 
@@ -112,7 +125,7 @@ All documentation is accessible through the web UI at `/api/docs/<guide-name>` o
 - **[Session Notes (2026-02-27)](documentation/session_notes_2026-02-27.md)** - Summary of recent troubleshooting and release preparation
 - **[PSUB Release Ops Skill](skills/psub-release-ops/SKILL.md)** - Local skill for repeatable release checks, downloads, builds, and troubleshooting
 
-## 🎯 Output
+## Output
 
 The build process generates:
 - `python-<version>-amd64.exe` - Main installer
@@ -120,21 +133,21 @@ The build process generates:
 - `python-<version>-embed-amd64.zip` - Embeddable distribution
 - `Python-<version>_<timestamp>.zip` - PSUB archive of the collected release output under `C:\python-releases`
 
-## 🛠️ Supported Python Versions
+## Supported Python Versions
 
 - Python 3.10.x
 - Python 3.11.x
 - Python 3.12.x
 
-## 📝 License
+## License
 
 This project is provided as-is for building Python distributions. Please ensure compliance with [Python's license](https://docs.python.org/3/license.html) when distributing built binaries.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Please feel free to submit issues or pull requests.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built to simplify Python security release deployment in enterprise environments.
 
