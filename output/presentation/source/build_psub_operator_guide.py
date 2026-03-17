@@ -221,11 +221,53 @@ def add_picture_cover(slide, image_path: Path, left, top, width, height):
 
 
 def add_screenshot_frame(slide, image_path: Path):
-    frame = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.55), Inches(1.82), Inches(8.55), Inches(4.85))
+    shadow = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(0.72),
+        Inches(2.0),
+        Inches(8.18),
+        Inches(4.52),
+    )
+    shadow.fill.solid()
+    shadow.fill.fore_color.rgb = RGBColor(4, 10, 18)
+    shadow.fill.transparency = 0.42
+    shadow.line.fill.background()
+    slide.shapes._spTree.remove(shadow._element)
+    slide.shapes._spTree.insert(2, shadow._element)
+
+    frame = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(0.58),
+        Inches(1.86),
+        Inches(8.18),
+        Inches(4.52),
+    )
     frame.fill.solid()
-    frame.fill.fore_color.rgb = RGBColor(245, 248, 252)
+    frame.fill.fore_color.rgb = RGBColor(248, 250, 252)
     frame.line.color.rgb = COLORS["steel"]
-    add_picture_cover(slide, image_path, Inches(0.73), Inches(2.0), Inches(8.2), Inches(4.5))
+
+    header = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(0.82),
+        Inches(2.05),
+        Inches(1.32),
+        Inches(0.28),
+    )
+    header.fill.solid()
+    header.fill.fore_color.rgb = COLORS["gold"]
+    header.line.fill.background()
+    tf = header.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = "Web UI"
+    r.font.size = Pt(10)
+    r.font.bold = True
+    r.font.color.rgb = COLORS["dark_text"]
+    p.alignment = PP_ALIGN.CENTER
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    add_picture_cover(slide, image_path, Inches(0.78), Inches(2.28), Inches(7.8), Inches(3.84))
 
 
 def add_proof_points(slide, items: list[dict[str, str]]):
