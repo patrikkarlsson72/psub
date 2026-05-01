@@ -69,7 +69,7 @@ Start the web UI:
 .\Script\Build-PythonRelease-UI-Simple.ps1 -Port 8080
 ```
 
-Open `http://localhost:8080` and confirm that these prerequisites are marked ready:
+The UI prefers port `8080`, but if that port is already taken it automatically picks a free localhost port and prints the chosen URL. Open the shown URL and confirm that these prerequisites are marked ready:
 
 - Visual Studio
 - Windows SDK

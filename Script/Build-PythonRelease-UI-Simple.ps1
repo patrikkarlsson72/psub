@@ -25,6 +25,43 @@ function Write-Ok($msg) {
     Write-Host "[OK] $msg" -ForegroundColor Green
 }
 
+function Test-LocalhostPortAvailable {
+    param([int]$Port)
+
+    $probe = $null
+    try {
+        $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $probe.Start()
+        return $true
+    } catch [System.Net.Sockets.SocketException] {
+        return $false
+    } finally {
+        if ($probe) {
+            $probe.Stop()
+        }
+    }
+}
+
+function Get-AvailableLocalhostPort {
+    param([int]$PreferredPort = 8080)
+
+    if (($PreferredPort -gt 0) -and (Test-LocalhostPortAvailable -Port $PreferredPort)) {
+        return $PreferredPort
+    }
+
+    if ($PreferredPort -gt 0) {
+        Write-Info "Port $PreferredPort is already in use. Selecting a free localhost port automatically."
+    }
+
+    $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $probe.Start()
+        return ([System.Net.IPEndPoint]$probe.LocalEndpoint).Port
+    } finally {
+        $probe.Stop()
+    }
+}
+
 function Send-JsonResponse {
     param(
         [System.Net.HttpListenerContext]$Context,
@@ -1968,8 +2005,9 @@ function Get-HtmlUI {
 }
 
 function Start-WebServer {
+    $selectedPort = Get-AvailableLocalhostPort -PreferredPort $Port
     $listener = New-Object System.Net.HttpListener
-    $url = "http://localhost:$Port/"
+    $url = "http://localhost:$selectedPort/"
     $listener.Prefixes.Add($url)
     
     $script:ServerListener = $listener

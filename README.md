@@ -67,7 +67,7 @@ Useful optional parameters include:
 .\Script\Build-PythonRelease-UI-Simple.ps1 -Port 8080
 ```
 
-Then open `http://localhost:8080` in your browser.
+The UI prefers port `8080`, but automatically falls back to a free localhost port if `8080` is already in use. The script opens the correct URL in your browser and also prints it in the console.
 
 The UI helps you check prerequisites, read the local documentation, configure build settings, and monitor build progress.
 
