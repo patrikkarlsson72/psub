@@ -72,3 +72,7 @@ If the source tree comes from an extracted `python.org` archive rather than a Gi
 - Artifact output path and zip path
 - Final PSUB release zip name, expected in the form `Python-<version>_<timestamp>.zip`
 - Any warnings/errors and final disposition
+
+To automate part of this evidence capture after a successful build, run:
+
+`.\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-<version>\Python-<version>" -ReleaseRoot "C:\python-releases"`

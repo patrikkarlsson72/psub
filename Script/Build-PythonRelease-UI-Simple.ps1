@@ -62,6 +62,47 @@ function Get-AvailableLocalhostPort {
     }
 }
 
+function New-WebListener {
+    param([int]$Port)
+
+    $prefixes = @(
+        "http://localhost:$Port/",
+        "http://127.0.0.1:$Port/"
+    )
+
+    $errors = @()
+
+    foreach ($prefix in $prefixes) {
+        $listener = $null
+        try {
+            $listener = New-Object System.Net.HttpListener
+            $listener.Prefixes.Add($prefix)
+            $listener.Start()
+
+            return @{
+                Listener = $listener
+                Url = $prefix
+            }
+        } catch {
+            $errors += [pscustomobject]@{
+                Prefix = $prefix
+                Message = $_.Exception.Message
+            }
+
+            if ($listener) {
+                try {
+                    $listener.Close()
+                } catch {
+                    # Ignore cleanup failures here.
+                }
+            }
+        }
+    }
+
+    $details = ($errors | ForEach-Object { "$($_.Prefix) => $($_.Message)" }) -join "; "
+    throw "Unable to start local web server. Tried: $details"
+}
+
 function Send-JsonResponse {
     param(
         [System.Net.HttpListenerContext]$Context,
@@ -2006,14 +2047,13 @@ function Get-HtmlUI {
 
 function Start-WebServer {
     $selectedPort = Get-AvailableLocalhostPort -PreferredPort $Port
-    $listener = New-Object System.Net.HttpListener
-    $url = "http://localhost:$selectedPort/"
-    $listener.Prefixes.Add($url)
-    
-    $script:ServerListener = $listener
-    
+
     try {
-        $listener.Start()
+        $listenerInfo = New-WebListener -Port $selectedPort
+        $listener = $listenerInfo.Listener
+        $url = $listenerInfo.Url
+        $script:ServerListener = $listener
+
         Write-Ok "Web server started at $url"
         Write-Info "Press Ctrl+C to stop"
         
@@ -2156,8 +2196,13 @@ function Start-WebServer {
     } catch [System.Management.Automation.PipelineStoppedException] {
         Write-Host ""
         Write-Info "Shutting down..."
+    } catch {
+        Write-Host "Failed to start local web UI: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Likely causes on a managed workstation: local HTTP listener policy, URL reservation rules, antivirus/AppLocker, or browser-launch restrictions." -ForegroundColor Yellow
+        Write-Host "Try running as admin once, or test whether another local listener is allowed on 127.0.0.1." -ForegroundColor Yellow
+        throw
     } finally {
-        if ($listener.IsListening) {
+        if ($listener -and $listener.IsListening) {
             $listener.Stop()
         }
         Write-Ok "Server stopped"

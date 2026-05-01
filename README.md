@@ -77,6 +77,17 @@ The UI helps you check prerequisites, read the local documentation, configure bu
 - [documentation/prerequisites_overview.md](documentation/prerequisites_overview.md)
 - [documentation/python_build_minimal_guide.md](documentation/python_build_minimal_guide.md)
 - [documentation/release_runbook.md](documentation/release_runbook.md)
+- [documentation/secure_build_checklist.md](documentation/secure_build_checklist.md)
+
+## Build Evidence
+
+After a successful release build, capture a local evidence bundle:
+
+```powershell
+.\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14" -ReleaseRoot "C:\python-releases"
+```
+
+This collects build metadata, `pip freeze`, and SHA256 checksums for the release artifacts.
 
 ## Supported Python Versions
 
