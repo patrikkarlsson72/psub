@@ -68,6 +68,7 @@ Useful optional parameters include:
 ```
 
 The UI prefers port `8080`, but automatically falls back to a free localhost port if `8080` is already in use. The script opens the correct URL in your browser and also prints it in the console.
+Build helper files and logs are written under the repo `logs` folder, and the UI no longer launches the build with `ExecutionPolicy Bypass`.
 
 The UI helps you check prerequisites, read the local documentation, configure build settings, and monitor build progress.
 

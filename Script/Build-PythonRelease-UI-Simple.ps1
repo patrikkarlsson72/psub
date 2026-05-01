@@ -972,12 +972,12 @@ function Invoke-BuildHandler {
 
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $buildId = [guid]::NewGuid().ToString()
-    $batchFile = Join-Path $env:TEMP "python-build-$timestamp.bat"
-    $statusFile = Join-Path $env:TEMP "python-build-status-$buildId.txt"
     $logsDir = Join-Path $PSScriptRoot "..\logs"
     if (-not (Test-Path $logsDir)) {
         New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
     }
+    $batchFile = Join-Path $logsDir "python-build-$timestamp-$buildId.bat"
+    $statusFile = Join-Path $logsDir "python-build-status-$buildId.txt"
     $logPath = Join-Path $logsDir "build-$buildId.log"
 
     $script:BuildStatus[$buildId] = @{
@@ -1009,7 +1009,7 @@ echo Visual Studio environment ready
 echo.
 echo Starting build...
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$BuildScriptPath" -SourcePath "$($data.SourcePath)" -BootstrapPython "$bootstrapPythonPath" -VenvName "$venvName" -ReleaseRoot "$releaseRoot" -WinSdkVersion "$winSdkVersion" -BuildId "$buildId" -LogPath "$logPath"
+powershell.exe -NoProfile -File "$BuildScriptPath" -SourcePath "$($data.SourcePath)" -BootstrapPython "$bootstrapPythonPath" -VenvName "$venvName" -ReleaseRoot "$releaseRoot" -WinSdkVersion "$winSdkVersion" -BuildId "$buildId" -LogPath "$logPath"
 echo.
 if errorlevel 1 (
     echo ========================================
