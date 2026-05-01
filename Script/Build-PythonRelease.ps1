@@ -448,45 +448,39 @@ $fingerprint = @{
 }
 Write-Log -Level "META" -Message (($fingerprint | ConvertTo-Json -Compress))
 
-# --- Activate venv -----------------------------------------------------------
+# --- Validate venv tools ----------------------------------------------------
 
-Write-Info "Checking venv activation script..."
-$ActivateScript = Join-Path $VenvPath "Scripts\Activate.ps1"
-Write-Info "Activate script path: $ActivateScript"
+Write-Info "Validating documentation venv tools..."
+$VenvScriptsPath = Join-Path $VenvPath "Scripts"
+$VenvPythonPath = Join-Path $VenvScriptsPath "python.exe"
+$SphinxBuildPath = Join-Path $VenvScriptsPath "sphinx-build.exe"
+$PipPath = Join-Path $VenvScriptsPath "pip.exe"
+$RequirementsPath = Join-Path $SourcePath "Doc\requirements.txt"
 
-if (-not (Test-Path $ActivateScript)) {
-    $errorMsg = "Cannot find venv activate script at '$ActivateScript'"
+if (-not (Test-Path $VenvPythonPath)) {
+    $errorMsg = "Venv Python not found at '$VenvPythonPath'. Recreate the venv from the UI or run 'python -m venv $VenvName' in '$SourcePath'."
     Write-Err $errorMsg
     throw $errorMsg
 }
 
-Write-Info "Activating venv..."
-try {
-    . $ActivateScript
-    Write-Ok "Venv activated."
-} catch {
-    $errorMsg = "Failed to activate venv: $($_.Exception.Message)"
+if (-not (Test-Path $PipPath)) {
+    $errorMsg = "pip.exe not found at '$PipPath'. The venv may be incomplete or blocked by workstation policy."
     Write-Err $errorMsg
     throw $errorMsg
 }
+
+Write-Ok "Venv tools found."
 
 # --- Set environment variables ----------------------------------------------
 
+$previousPath = $env:PATH
 $env:PYTHON = $BootstrapPython
-$SphinxBuildPath = Join-Path $VenvPath "Scripts\sphinx-build.exe"
-$PipPath = Join-Path $VenvPath "Scripts\pip.exe"
-$RequirementsPath = Join-Path $SourcePath "Doc\requirements.txt"
+$env:PATH = "$VenvScriptsPath;$previousPath"
 
 # Check if sphinx-build exists, if not try to install requirements
 if (-not (Test-Path $SphinxBuildPath)) {
     Write-Info "sphinx-build.exe not found. Attempting to install requirements..."
-    
-    if (-not (Test-Path $PipPath)) {
-        $errorMsg = "pip.exe not found at '$PipPath'. Venv may be corrupted."
-        Write-Err $errorMsg
-        throw $errorMsg
-    }
-    
+
     if (-not (Test-Path $RequirementsPath)) {
         $errorMsg = "Doc\requirements.txt not found at '$RequirementsPath'"
         Write-Err $errorMsg
