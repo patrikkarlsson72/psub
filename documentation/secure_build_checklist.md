@@ -33,7 +33,9 @@ Use this checklist when you want a repeatable and inspectable build of a Python 
 
 ## 5. Capture evidence after the build
 
-Run:
+By default, `Build-PythonRelease.ps1` now runs evidence capture automatically after a successful build.
+
+Run it manually when you want to re-create the evidence bundle or capture it for an existing release directory:
 
 ```powershell
 .\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14" -ReleaseRoot "C:\python-releases"

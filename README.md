@@ -81,13 +81,15 @@ The UI helps you check prerequisites, read the local documentation, configure bu
 
 ## Build Evidence
 
-After a successful release build, capture a local evidence bundle:
+After a successful release build, `Build-PythonRelease.ps1` now captures a local evidence bundle automatically by default.
+
+You can still run it manually when needed:
 
 ```powershell
 .\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14" -ReleaseRoot "C:\python-releases"
 ```
 
-This collects build metadata, `pip freeze`, and SHA256 checksums for the release artifacts.
+This collects build metadata, `pip freeze`, and SHA256 checksums for the release artifacts. To disable the automatic step for a specific run, use `-CaptureEvidence $false`.
 
 ## Supported Python Versions
 

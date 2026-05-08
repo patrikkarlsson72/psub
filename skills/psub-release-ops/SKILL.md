@@ -44,8 +44,14 @@ Use this skill for repeatable CPython security-release operations in this reposi
 ## Known behavior to remember
 
 - Python 3.10 MSI builds may depend on legacy WiX/MSBuild components and can fail with `MSB4062` if `.NET Framework 3.5` is not enabled.
+- Python 3.10 release packaging expects compiled HTML Help (`Doc\build\htmlhelp\python*.chm`) before MSI packaging.
+- Python 3.11 and 3.12 release packaging expects HTML documentation under `Doc\build\html\` rather than CHM-only output.
 - `buildrelease.bat` can sometimes output `Build FAILED.` even when process exit code is `0`.
 - PSUB script has been updated to detect this mismatch and fail early in step 4.
+- `Build-PythonRelease.ps1` now chooses the documentation build mode by source version:
+- `3.10.x` uses `Doc\make.bat htmlhelp`
+- `3.11.x` and `3.12.x` use `Doc\make.bat html`
+- `Build-PythonRelease.ps1` now captures build evidence automatically after a successful build unless `-CaptureEvidence $false` is used.
 
 ## References
 

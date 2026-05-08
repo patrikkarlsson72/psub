@@ -111,7 +111,9 @@ Build installer:
 Tools\msi\buildrelease.bat -x64
 ```
 
-For `Python 3.10.x`, make sure the HTML Help documentation build succeeds so that `doc.msi` can be packaged. In PSUB this is now handled automatically before the MSI packaging step.
+Documentation note:
+- `Python 3.10.x` expects HTML Help output, and in PSUB this is handled automatically before the MSI packaging step.
+- `Python 3.11.x` and `Python 3.12.x` expect HTML documentation output, which PSUB now selects automatically.
 
 ---
 
@@ -154,12 +156,20 @@ pip install -r Doc\requirements.txt
 ```
 
 ### Python 3.10 doc/CHM errors
-If `doc.msi` fails because `python31020.chm` or a similar `.chm` file is missing:
+This applies to `Python 3.10.x` only. If `doc.msi` fails because `python31020.chm` or a similar `.chm` file is missing:
 ```
 Tools\msi\get_externals.bat
 Doc\make.bat htmlhelp
 ```
 PSUB now automates this path and also pins a compatible setuptools version in the documentation venv when older Sphinx requires `pkg_resources`.
+
+### Python 3.11 / 3.12 documentation packaging errors
+If `doc.msi` fails because WiX cannot find `doc_html` content or the HTML documentation output is missing:
+```
+Tools\msi\get_externals.bat
+Doc\make.bat html
+```
+PSUB now automates this path for `Python 3.11.x` and `3.12.x` before running the MSI packaging step.
 
 ### Wrong compiler/toolset
 Preferred:

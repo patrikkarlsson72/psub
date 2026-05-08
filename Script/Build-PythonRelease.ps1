@@ -23,7 +23,13 @@ param(
     [string]$BuildId = "",
 
     # Optional log file path
-    [string]$LogPath = ""
+    [string]$LogPath = "",
+
+    # Automatically capture a local evidence bundle after a successful build
+    [bool]$CaptureEvidence = $true,
+
+    # When true, evidence capture errors fail the overall build
+    [bool]$FailOnEvidenceError = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -606,7 +612,7 @@ function Invoke-Cmd {
                 Write-Ok "Command completed: $Command"
                 return @{
                     ExitCode = 0
-                    Output = ""
+                    Output = (($output | ForEach-Object { $_.ToString() }) -join "`n")
                     ErrorOutput = ""
                 }
             } catch {
@@ -753,7 +759,43 @@ function Get-ExpectedDocHelpFilename {
     return "python$major$minor$micro$suffix.chm"
 }
 
-function Ensure-DocBuildCompatibility {
+function Get-SourceVersionInfo {
+    param([string]$SourceRoot)
+
+    $patchlevelPath = Join-Path $SourceRoot "Include\patchlevel.h"
+    if (-not (Test-Path $patchlevelPath)) {
+        return $null
+    }
+
+    $content = Get-Content $patchlevelPath -Raw
+    $major = ([regex]::Match($content, '#define\s+PY_MAJOR_VERSION\s+(\d+)')).Groups[1].Value
+    $minor = ([regex]::Match($content, '#define\s+PY_MINOR_VERSION\s+(\d+)')).Groups[1].Value
+    $micro = ([regex]::Match($content, '#define\s+PY_MICRO_VERSION\s+(\d+)')).Groups[1].Value
+    $level = ([regex]::Match($content, '#define\s+PY_RELEASE_LEVEL\s+(PY_RELEASE_LEVEL_[A-Z]+)')).Groups[1].Value
+    $serial = ([regex]::Match($content, '#define\s+PY_RELEASE_SERIAL\s+(\d+)')).Groups[1].Value
+
+    if (-not $major -or -not $minor -or -not $micro) {
+        return $null
+    }
+
+    $suffix = switch ($level) {
+        "PY_RELEASE_LEVEL_ALPHA" { "a$serial" }
+        "PY_RELEASE_LEVEL_BETA" { "b$serial" }
+        "PY_RELEASE_LEVEL_GAMMA" { "rc$serial" }
+        default { "" }
+    }
+
+    return [pscustomobject]@{
+        Major = [int]$major
+        Minor = [int]$minor
+        Micro = [int]$micro
+        Version = "$major.$minor.$micro$suffix"
+        DocHelpFilename = "python$major$minor$micro$suffix.chm"
+        PreferHtmlDocs = (([int]$major -gt 3) -or (([int]$major -eq 3) -and ([int]$minor -ge 11)))
+    }
+}
+
+function Initialize-DocBuildCompatibility {
     param(
         [string]$VenvRoot,
         [string]$PipExecutable
@@ -797,7 +839,7 @@ function Ensure-DocBuildCompatibility {
     }
 }
 
-function Build-CompiledHtmlHelp {
+function New-BuildReleaseDocumentation {
     param(
         [string]$SourceRoot,
         [string]$VenvRoot,
@@ -805,8 +847,37 @@ function Build-CompiledHtmlHelp {
     )
 
     $docPath = Join-Path $SourceRoot "Doc"
+    $versionInfo = Get-SourceVersionInfo -SourceRoot $SourceRoot
+    if (-not $versionInfo) {
+        $errorMsg = "Could not determine source version from Include\patchlevel.h."
+        Write-Err $errorMsg
+        throw $errorMsg
+    }
+
+    if ($versionInfo.PreferHtmlDocs) {
+        $docOutputPath = Join-Path $docPath "build\html\index.html"
+        if (Test-Path $docOutputPath) {
+            Write-Ok "HTML documentation already available: $docOutputPath"
+            return $docOutputPath
+        }
+
+        Initialize-DocBuildCompatibility -VenvRoot $VenvRoot -PipExecutable $PipExecutable
+
+        Write-Step "Step 3.5/4: Building HTML documentation for MSI packaging..."
+        Invoke-Cmd -Command "$docPath\make.bat" -Arguments @("html") -WorkingDirectory $docPath
+
+        if (-not (Test-Path $docOutputPath)) {
+            $errorMsg = "Expected HTML documentation was not created: '$docOutputPath'"
+            Write-Err $errorMsg
+            throw $errorMsg
+        }
+
+        Write-Ok "HTML documentation created: $docOutputPath"
+        return $docOutputPath
+    }
+
     $hhcPath = Join-Path $SourceRoot "externals\windows-installer\htmlhelp\hhc.exe"
-    $docFilename = Get-ExpectedDocHelpFilename -SourceRoot $SourceRoot
+    $docFilename = $versionInfo.DocHelpFilename
     if (-not $docFilename) {
         $errorMsg = "Could not determine expected CHM documentation filename from Include\patchlevel.h."
         Write-Err $errorMsg
@@ -825,7 +896,7 @@ function Build-CompiledHtmlHelp {
         throw $errorMsg
     }
 
-    Ensure-DocBuildCompatibility -VenvRoot $VenvRoot -PipExecutable $PipExecutable
+    Initialize-DocBuildCompatibility -VenvRoot $VenvRoot -PipExecutable $PipExecutable
 
     Write-Step "Step 3.5/4: Building compiled HTML Help documentation..."
     $previousHtmlHelp = $env:HTMLHELP
@@ -844,6 +915,56 @@ function Build-CompiledHtmlHelp {
 
     Write-Ok "Compiled HTML Help created: $docOutputPath"
     return $docOutputPath
+}
+
+function Invoke-BuildEvidenceCapture {
+    param(
+        [string]$SourceRoot,
+        [string]$ReleaseRootPath,
+        [string]$ResolvedReleaseDir,
+        [string]$BootstrapPythonPath,
+        [string]$DocumentationVenvName,
+        [bool]$StopOnError
+    )
+
+    $evidenceScriptPath = Join-Path $PSScriptRoot "Capture-BuildEvidence.ps1"
+    if (-not (Test-Path $evidenceScriptPath)) {
+        $message = "Evidence script not found at '$evidenceScriptPath'."
+        if ($StopOnError) {
+            Write-Err $message
+            throw $message
+        }
+
+        Write-Info $message
+        return
+    }
+
+    Write-Step "Capturing build evidence..."
+    Write-Info "Evidence script : $evidenceScriptPath"
+
+    try {
+        & $evidenceScriptPath `
+            -SourcePath $SourceRoot `
+            -ReleaseRoot $ReleaseRootPath `
+            -ReleaseDir $ResolvedReleaseDir `
+            -BootstrapPython $BootstrapPythonPath `
+            -VenvName $DocumentationVenvName
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Capture-BuildEvidence.ps1 exited with code $LASTEXITCODE."
+        }
+
+        $evidenceDir = Join-Path $ResolvedReleaseDir "_evidence"
+        Write-Ok "Build evidence captured: $evidenceDir"
+    } catch {
+        $message = "Build evidence capture failed: $($_.Exception.Message)"
+        if ($StopOnError) {
+            Write-Err $message
+            throw $message
+        }
+
+        Write-Info $message
+    }
 }
 
 # --- Step 1: PCbuild\get_externals ------------------------------------------
@@ -871,7 +992,7 @@ Invoke-Cmd -Command "$PcbuildPath\build.bat" -Arguments @("-p","x64","--pgo") -W
 Write-Step "Step 3/4: Downloading MSI externals..."
 Invoke-Cmd -Command "$MsiToolsPath\get_externals.bat" -Arguments @() -WorkingDirectory $MsiToolsPath
 
-$docHelpPath = Build-CompiledHtmlHelp -SourceRoot $SourcePath -VenvRoot $VenvPath -PipExecutable $PipPath
+New-BuildReleaseDocumentation -SourceRoot $SourcePath -VenvRoot $VenvPath -PipExecutable $PipPath | Out-Null
 
 # --- Step 4: Tools\msi\buildrelease.bat -x64 --------------------------------
 
@@ -950,6 +1071,16 @@ Write-Info "Creating zip: $zipPath"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 Compress-Archive -Path (Join-Path $ReleaseDir "*") -DestinationPath $zipPath
 Write-Ok "Zip created."
+
+if ($CaptureEvidence) {
+    Invoke-BuildEvidenceCapture `
+        -SourceRoot $SourcePath `
+        -ReleaseRootPath $ReleaseRoot `
+        -ResolvedReleaseDir $ReleaseDir `
+        -BootstrapPythonPath $BootstrapPython `
+        -DocumentationVenvName $VenvName `
+        -StopOnError $FailOnEvidenceError
+}
 
 Write-Host ""
 Write-Ok "Build pipeline completed successfully."

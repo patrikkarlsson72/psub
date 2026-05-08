@@ -49,12 +49,14 @@ If the source tree comes from an extracted `python.org` archive rather than a Gi
 - Some environments expose SDK under WOW6432Node registry path.
 - Verify both registry and include directory on disk.
 
-### 4) Python 3.10 `doc.msi` / missing `.chm`
+### 4) Documentation packaging differs between 3.10 and 3.11+
 
-- Symptom: MSI build fails with an error such as missing `python31020.chm`.
-- Root cause: compiled HTML Help documentation was not available before WiX packaging.
-- PSUB now builds and verifies the `.chm` file before running `buildrelease.bat --skip-doc`.
-- If you need to reproduce manually, run `Doc\make.bat htmlhelp` from the CPython source tree after `Tools\msi\get_externals.bat`.
+- Python `3.10.x` MSI packaging expects compiled HTML Help output (`Doc\build\htmlhelp\python*.chm`).
+- Python `3.11.x` and `3.12.x` MSI packaging expects HTML documentation under `Doc\build\html\`.
+- PSUB now chooses the correct documentation build mode automatically before running `buildrelease.bat --skip-doc`.
+- If you need to reproduce manually:
+- For `3.10.x`, run `Doc\make.bat htmlhelp` after `Tools\msi\get_externals.bat`.
+- For `3.11.x` and `3.12.x`, run `Doc\make.bat html` after `Tools\msi\get_externals.bat`.
 
 ### 5) `pkg_resources` / older Sphinx compatibility in doc venv
 
@@ -73,6 +75,8 @@ If the source tree comes from an extracted `python.org` archive rather than a Gi
 - Final PSUB release zip name, expected in the form `Python-<version>_<timestamp>.zip`
 - Any warnings/errors and final disposition
 
-To automate part of this evidence capture after a successful build, run:
+`Build-PythonRelease.ps1` now captures this evidence automatically after a successful build by default.
+
+If you need to rerun the capture manually or collect evidence separately, run:
 
 `.\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-<version>\Python-<version>" -ReleaseRoot "C:\python-releases"`
