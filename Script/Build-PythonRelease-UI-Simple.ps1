@@ -209,8 +209,11 @@ function Get-VisualStudioInstallations {
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Professional",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Enterprise",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional",
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise"
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
         )
 
         foreach ($legacyPath in $legacyPaths) {
