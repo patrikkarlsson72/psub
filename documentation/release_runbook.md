@@ -80,3 +80,5 @@ If the source tree comes from an extracted `python.org` archive rather than a Gi
 If you need to rerun the capture manually or collect evidence separately, run:
 
 `.\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-<version>\Python-<version>" -ReleaseRoot "C:\python-releases"`
+
+The evidence bundle now includes a presentation-friendly `summary.html` alongside the raw evidence files, so you can share a cleaner summary with reviewers or decision-makers without losing the technical artifacts.

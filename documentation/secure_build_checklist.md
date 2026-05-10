@@ -47,6 +47,7 @@ The script writes evidence into `ReleaseDir\_evidence\`:
 - `pip-freeze.txt`
 - `artifact-sha256.txt`
 - `summary.txt`
+- `summary.html`
 
 ## 6. Review the output artifacts
 

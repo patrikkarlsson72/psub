@@ -89,7 +89,7 @@ You can still run it manually when needed:
 .\Script\Capture-BuildEvidence.ps1 -SourcePath "C:\src\Python-3.11.14\Python-3.11.14" -ReleaseRoot "C:\python-releases"
 ```
 
-This collects build metadata, `pip freeze`, and SHA256 checksums for the release artifacts. To disable the automatic step for a specific run, use `-CaptureEvidence $false`.
+This collects build metadata, `pip freeze`, SHA256 checksums for the release artifacts, and a presentation-friendly `summary.html` report inside the evidence bundle. To disable the automatic step for a specific run, use `-CaptureEvidence $false`.
 
 ## Supported Python Versions
 

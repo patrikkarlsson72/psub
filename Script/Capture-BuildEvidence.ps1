@@ -114,6 +114,26 @@ function Get-PipFreezeOutput {
     return Get-CommandOutputOrEmpty -Command $PythonPath -Arguments @("-m", "pip", "freeze")
 }
 
+function ConvertTo-HtmlSafeText {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    return [System.Net.WebUtility]::HtmlEncode(($Value | Out-String).Trim())
+}
+
+function Get-EvidenceDisplayValue {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return "Not available"
+    }
+
+    return $Value
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resolvedSourcePath = Resolve-RequiredPath -Path $SourcePath -Label "SourcePath"
 $resolvedReleaseRoot = Resolve-RequiredPath -Path $ReleaseRoot -Label "ReleaseRoot"
@@ -218,6 +238,7 @@ $metadataPath = Join-Path $evidenceDir "build-metadata.json"
 $pipFreezePath = Join-Path $evidenceDir "pip-freeze.txt"
 $hashesPath = Join-Path $evidenceDir "artifact-sha256.txt"
 $summaryPath = Join-Path $evidenceDir "summary.txt"
+$summaryHtmlPath = Join-Path $evidenceDir "summary.html"
 
 $metadata | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metadataPath -Encoding ASCII
 $pipFreeze | Set-Content -LiteralPath $pipFreezePath -Encoding ASCII
@@ -245,5 +266,280 @@ $summary = @(
 )
 $summary | Set-Content -LiteralPath $summaryPath -Encoding ASCII
 
+$artifactCount = @($artifactHashes).Count
+$releaseDirName = Split-Path -Leaf $resolvedReleaseDir
+$releaseZipName = if ($releaseZipPath) { Split-Path -Leaf $releaseZipPath } else { "" }
+$summaryTitle = "PSUB Build Evidence Summary"
+$summarySubtitle = "Executive summary for release evidence captured from the local build environment."
+$htmlMetadataRows = @(
+    @{ Label = "Generated At"; Value = $metadata.GeneratedAt }
+    @{ Label = "Source Version"; Value = $metadata.SourceVersion }
+    @{ Label = "Release Directory"; Value = $metadata.ReleaseDir }
+    @{ Label = "Release Zip"; Value = (Get-EvidenceDisplayValue -Value $metadata.ReleaseZip) }
+    @{ Label = "Repository Commit"; Value = (Get-EvidenceDisplayValue -Value $metadata.RepoCommit) }
+    @{ Label = "Repository Dirty"; Value = [string]$metadata.RepoDirty }
+    @{ Label = "Bootstrap Python"; Value = (Get-EvidenceDisplayValue -Value $metadata.BootstrapPythonVersion) }
+    @{ Label = "Venv Python"; Value = (Get-EvidenceDisplayValue -Value $metadata.VenvPythonVersion) }
+    @{ Label = "pip"; Value = (Get-EvidenceDisplayValue -Value $metadata.PipVersion) }
+    @{ Label = "Sphinx"; Value = (Get-EvidenceDisplayValue -Value $metadata.SphinxVersion) }
+)
+
+$metadataRowsHtml = ($htmlMetadataRows | ForEach-Object {
+    "<tr><th>{0}</th><td>{1}</td></tr>" -f (ConvertTo-HtmlSafeText -Value $_.Label), (ConvertTo-HtmlSafeText -Value $_.Value)
+}) -join [Environment]::NewLine
+
+$evidenceLinks = @(
+    @{ Label = "Build metadata (JSON)"; FileName = [System.IO.Path]::GetFileName($metadataPath); Note = "Machine-readable build metadata." }
+    @{ Label = "Artifact SHA256 list"; FileName = [System.IO.Path]::GetFileName($hashesPath); Note = "Checksums for release artifacts." }
+    @{ Label = "pip freeze"; FileName = [System.IO.Path]::GetFileName($pipFreezePath); Note = "Installed Python package versions inside the venv." }
+    @{ Label = "Technical text summary"; FileName = [System.IO.Path]::GetFileName($summaryPath); Note = "Plain-text overview for quick terminal review." }
+)
+
+$evidenceLinksHtml = ($evidenceLinks | ForEach-Object {
+    $href = ConvertTo-HtmlSafeText -Value $_.FileName
+    $label = ConvertTo-HtmlSafeText -Value $_.Label
+    $note = ConvertTo-HtmlSafeText -Value $_.Note
+    "<li><a href=""{0}"">{1}</a><span>{2}</span></li>" -f $href, $label, $note
+}) -join [Environment]::NewLine
+
+$releaseZipDisplay = ConvertTo-HtmlSafeText -Value (Get-EvidenceDisplayValue -Value $releaseZipName)
+$releaseDirDisplay = ConvertTo-HtmlSafeText -Value $releaseDirName
+$artifactCountDisplay = ConvertTo-HtmlSafeText -Value ([string]$artifactCount)
+$htmlTitleDisplay = ConvertTo-HtmlSafeText -Value $summaryTitle
+$htmlSubtitleDisplay = ConvertTo-HtmlSafeText -Value $summarySubtitle
+
+$summaryHtml = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$htmlTitleDisplay</title>
+    <style>
+        :root {
+            color-scheme: light;
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            background: #f4f7fb;
+            color: #1f2d3d;
+            line-height: 1.5;
+        }
+        .page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+        .report {
+            background: #ffffff;
+            border: 1px solid #d7e1ec;
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+        }
+        .hero {
+            padding: 28px 32px 22px;
+            background: linear-gradient(180deg, #f8fbff 0%, #edf4fb 100%);
+            border-bottom: 1px solid #d7e1ec;
+        }
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #dcecff;
+            color: #1f4f82;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+            line-height: 1.15;
+            color: #162538;
+        }
+        .subtitle {
+            margin: 0;
+            font-size: 15px;
+            color: #4a6178;
+            max-width: 760px;
+        }
+        .section {
+            padding: 24px 32px 8px;
+        }
+        .section h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+            color: #163252;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px;
+        }
+        .summary-card {
+            border: 1px solid #d9e5f1;
+            border-radius: 10px;
+            padding: 14px 16px;
+            background: #fbfdff;
+        }
+        .summary-card .label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #5f7891;
+        }
+        .summary-card .value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #18324f;
+            word-break: break-word;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #d9e5f1;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #e3ebf3;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            width: 240px;
+            background: #f8fbff;
+            color: #33516d;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        td {
+            color: #1f2d3d;
+            font-size: 14px;
+            word-break: break-word;
+        }
+        tr:last-child th,
+        tr:last-child td {
+            border-bottom: none;
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 10px;
+        }
+        .file-list li {
+            border: 1px solid #d9e5f1;
+            border-radius: 10px;
+            padding: 12px 14px;
+            background: #fbfdff;
+        }
+        .file-list a {
+            color: #0f5ea8;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .file-list a:hover {
+            text-decoration: underline;
+        }
+        .file-list span {
+            display: block;
+            margin-top: 4px;
+            font-size: 13px;
+            color: #5a7188;
+        }
+        .footer-note {
+            padding: 18px 32px 28px;
+            font-size: 13px;
+            color: #5a7188;
+        }
+        @media (max-width: 640px) {
+            .page {
+                padding: 16px 12px 28px;
+            }
+            .hero, .section, .footer-note {
+                padding-left: 18px;
+                padding-right: 18px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            th {
+                width: 38%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="report">
+            <div class="hero">
+                <div class="eyebrow">PSUB Evidence</div>
+                <h1>$htmlTitleDisplay</h1>
+                <p class="subtitle">$htmlSubtitleDisplay</p>
+            </div>
+
+            <div class="section">
+                <h2>Release Snapshot</h2>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <span class="label">Source Version</span>
+                        <span class="value">$(ConvertTo-HtmlSafeText -Value (Get-EvidenceDisplayValue -Value $metadata.SourceVersion))</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="label">Release Folder</span>
+                        <span class="value">$releaseDirDisplay</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="label">Release Zip</span>
+                        <span class="value">$releaseZipDisplay</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="label">Artifacts Hashed</span>
+                        <span class="value">$artifactCountDisplay</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Build Metadata</h2>
+                <table>
+                    <tbody>
+$metadataRowsHtml
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>Evidence Files</h2>
+                <ul class="file-list">
+$evidenceLinksHtml
+                </ul>
+            </div>
+
+            <div class="footer-note">
+                This document is a presentation-friendly summary of the local build evidence bundle. Detailed technical evidence remains available in the linked files above.
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"@
+
+$summaryHtml | Set-Content -LiteralPath $summaryHtmlPath -Encoding ASCII
+
 Write-Host "[OK] Evidence written to $evidenceDir" -ForegroundColor Green
 Write-Host "[INFO] Summary: $summaryPath" -ForegroundColor Cyan
+Write-Host "[INFO] HTML Summary: $summaryHtmlPath" -ForegroundColor Cyan
