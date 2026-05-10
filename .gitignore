@@ -27,6 +27,8 @@ output/presentation/screenshots/
 
 # Logs
 *.log
+logs/
+uploads/
 
 # OS
 .DS_Store
@@ -37,6 +39,12 @@ desktop.ini
 .vscode/
 .idea/
 *.code-workspace
+
+# Local source archives
+Python-*.tar.xz
+Python-*.tar.gz
+Python-*.tgz
+Python-*.zip
 
 
 
