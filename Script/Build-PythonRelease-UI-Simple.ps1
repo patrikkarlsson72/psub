@@ -12,6 +12,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+} catch {
+    Write-Host "[WARN] System.Windows.Forms could not be loaded. Folder browse dialogs will be unavailable: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 # Global state
 $script:ServerListener = $null
 $script:BuildStatus = @{}  # Track build status by ID
@@ -256,6 +262,633 @@ function Test-IsWindowsAppsPythonAlias {
     }
 
     return ($Path -match '(?i)\\AppData\\Local\\Microsoft\\WindowsApps\\python(?:3(?:\.\d+)?)?\.exe$')
+}
+
+function Get-NearestExistingDirectory {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        $candidate = [System.IO.Path]::GetFullPath($Path.Trim('"'))
+    } catch {
+        return $null
+    }
+
+    while ($candidate) {
+        if (Test-Path -LiteralPath $candidate -PathType Container) {
+            return $candidate
+        }
+
+        try {
+            $parent = [System.IO.Directory]::GetParent($candidate)
+            if (-not $parent) {
+                break
+            }
+            $candidate = $parent.FullName
+        } catch {
+            break
+        }
+    }
+
+    return $null
+}
+
+function Test-CPythonSourceDirectory {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return @{
+            IsValid = $false
+            Path = $null
+            Message = "Source path is required."
+        }
+    }
+
+    try {
+        $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    } catch {
+        return @{
+            IsValid = $false
+            Path = $Path
+            Message = "Source path does not exist: $Path"
+        }
+    }
+
+    $requiredEntries = @(
+        @{ RelativePath = "PCbuild"; Label = "PCbuild" },
+        @{ RelativePath = "Tools\msi"; Label = "Tools\msi" },
+        @{ RelativePath = "Doc\requirements.txt"; Label = "Doc\requirements.txt" }
+    )
+
+    $missing = @()
+    foreach ($entry in $requiredEntries) {
+        $candidatePath = Join-Path $resolvedPath $entry.RelativePath
+        if (-not (Test-Path -LiteralPath $candidatePath)) {
+            $missing += $entry.Label
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        return @{
+            IsValid = $false
+            Path = $resolvedPath
+            Message = "Selected folder does not look like a CPython source tree. Missing: $($missing -join ', ')"
+        }
+    }
+
+    return @{
+        IsValid = $true
+        Path = $resolvedPath
+        Message = "CPython source structure detected."
+    }
+}
+
+function Invoke-DialogHelper {
+    param(
+        [ValidateSet("file", "folder")]
+        [string]$Mode,
+        [string]$Description = "",
+        [string]$SelectedPath = "",
+        [bool]$AllowNewFolder = $true,
+        [string]$Filter = "All Files (*.*)|*.*",
+        [string]$Title = "Select File"
+    )
+
+    if (-not ("System.Windows.Forms.OpenFileDialog" -as [type]) -or -not ("System.Windows.Forms.FolderBrowserDialog" -as [type])) {
+        throw "System.Windows.Forms is not available on this machine."
+    }
+
+    $initialPath = Get-NearestExistingDirectory -Path $SelectedPath
+
+    $dialogPayload = @{
+        Mode = $Mode
+        Description = $Description
+        InitialPath = $initialPath
+        AllowNewFolder = $AllowNewFolder
+        Filter = $Filter
+        Title = $Title
+    } | ConvertTo-Json -Compress
+
+    $dialogPayloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($dialogPayload))
+    $helperScript = @"
+`$payloadJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$dialogPayloadBase64'))
+`$payload = `$payloadJson | ConvertFrom-Json
+Add-Type -AssemblyName System.Windows.Forms | Out-Null
+if (`$payload.Mode -eq 'folder') {
+    `$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    `$dialog.Description = [string]`$payload.Description
+    `$dialog.ShowNewFolderButton = [bool]`$payload.AllowNewFolder
+    if (`$payload.InitialPath) {
+        `$dialog.SelectedPath = [string]`$payload.InitialPath
+    }
+    try {
+        `$result = `$dialog.ShowDialog()
+        if (`$result -eq [System.Windows.Forms.DialogResult]::OK -and -not [string]::IsNullOrWhiteSpace(`$dialog.SelectedPath)) {
+            `$output = [pscustomobject]@{
+                Selected = `$true
+                Path = `$dialog.SelectedPath
+            } | ConvertTo-Json -Compress
+        } else {
+            `$output = [pscustomobject]@{
+                Selected = `$false
+                Path = `$null
+            } | ConvertTo-Json -Compress
+        }
+    } finally {
+        `$dialog.Dispose()
+    }
+} else {
+    `$dialog = New-Object System.Windows.Forms.OpenFileDialog
+    `$dialog.Filter = [string]`$payload.Filter
+    `$dialog.Title = [string]`$payload.Title
+    `$dialog.CheckFileExists = `$true
+    `$dialog.Multiselect = `$false
+    if (`$payload.InitialPath) {
+        `$dialog.InitialDirectory = [string]`$payload.InitialPath
+    }
+    try {
+        `$result = `$dialog.ShowDialog()
+        if (`$result -eq [System.Windows.Forms.DialogResult]::OK -and -not [string]::IsNullOrWhiteSpace(`$dialog.FileName)) {
+            `$output = [pscustomobject]@{
+                Selected = `$true
+                Path = `$dialog.FileName
+            } | ConvertTo-Json -Compress
+        } else {
+            `$output = [pscustomobject]@{
+                Selected = `$false
+                Path = `$null
+            } | ConvertTo-Json -Compress
+        }
+    } finally {
+        `$dialog.Dispose()
+    }
+}
+"@
+
+    $resultFile = Join-Path ([System.IO.Path]::GetTempPath()) ("psub-dialog-result-{0}.json" -f ([guid]::NewGuid().ToString()))
+    $helperScript += "`n[System.IO.File]::WriteAllText('$($resultFile -replace '\\', '\\')', (`$output | Out-String).Trim(), [Text.Encoding]::UTF8)"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($helperScript))
+    $process = $null
+
+    try {
+        $process = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @("-NoProfile", "-STA", "-EncodedCommand", $encodedCommand) `
+            -WindowStyle Hidden `
+            -PassThru
+
+        if (-not $process.WaitForExit(60000)) {
+            try {
+                $process.Kill()
+            } catch {
+                # Ignore cleanup failures if the helper is already gone.
+            }
+            throw "Dialog helper timed out after 60 seconds."
+        }
+
+        if ($process.ExitCode -ne 0) {
+            throw "Dialog helper failed with exit code $($process.ExitCode)."
+        }
+
+        $rawResult = ""
+        if (Test-Path -LiteralPath $resultFile) {
+            $rawResult = (Get-Content -LiteralPath $resultFile -Raw -ErrorAction SilentlyContinue | Out-String).Trim()
+        }
+
+        if (-not $rawResult) {
+            return @{
+                Selected = $false
+                Path = $null
+            }
+        }
+
+        $parsed = $rawResult | ConvertFrom-Json -ErrorAction Stop
+        return @{
+            Selected = [bool]$parsed.Selected
+            Path = $parsed.Path
+        }
+    } finally {
+        if (Test-Path -LiteralPath $resultFile) {
+            Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
+        }
+        if ($process) {
+            $process.Dispose()
+        }
+    }
+}
+
+function Show-FolderBrowserDialog {
+    param(
+        [string]$Description,
+        [string]$SelectedPath = "",
+        [bool]$AllowNewFolder = $true
+    )
+
+    return Invoke-DialogHelper -Mode "folder" -Description $Description -SelectedPath $SelectedPath -AllowNewFolder $AllowNewFolder
+}
+
+function Show-ArchiveFileDialog {
+    param([string]$SelectedPath = "")
+
+    return Invoke-DialogHelper `
+        -Mode "file" `
+        -SelectedPath $SelectedPath `
+        -Filter "CPython Archives (*.tar.xz;*.tar.gz;*.tgz;*.zip)|*.tar.xz;*.tar.gz;*.tgz;*.zip|All Files (*.*)|*.*" `
+        -Title "Select the downloaded CPython source archive"
+}
+
+function Test-SourceArchivePath {
+    param([string]$ArchivePath)
+
+    $pathValidation = Test-SafePathInput -Value $ArchivePath -FieldName "SourceArchivePath" -RequireExistingPath
+    if (-not $pathValidation.IsValid) {
+        return @{
+            IsValid = $false
+            Error = $pathValidation.Error
+        }
+    }
+
+    $extensionValid = $ArchivePath -match '(?i)\.(tar\.xz|tar\.gz|tgz|zip)$'
+    if (-not $extensionValid) {
+        return @{
+            IsValid = $false
+            Error = "SourceArchivePath must point to a supported archive (.tar.xz, .tar.gz, .tgz, or .zip)."
+        }
+    }
+
+    return @{
+        IsValid = $true
+        Error = $null
+    }
+}
+
+function Get-FileSha256 {
+    param([string]$Path)
+
+    $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    return (Get-FileHash -LiteralPath $resolvedPath -Algorithm SHA256 -ErrorAction Stop).Hash
+}
+
+function ConvertTo-Sha256Value {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    return (($Value | Out-String).Trim() -replace '\s+', '').ToUpperInvariant()
+}
+
+function Test-ExpectedSha256Value {
+    param([string]$Value)
+
+    $normalizedValue = ConvertTo-Sha256Value -Value $Value
+    if ([string]::IsNullOrWhiteSpace($normalizedValue)) {
+        return @{
+            IsValid = $false
+            Error = "Expected SHA256 is required."
+            Normalized = ""
+        }
+    }
+
+    if ($normalizedValue -notmatch '^[A-F0-9]{64}$') {
+        return @{
+            IsValid = $false
+            Error = "Expected SHA256 must be exactly 64 hexadecimal characters."
+            Normalized = $normalizedValue
+        }
+    }
+
+    return @{
+        IsValid = $true
+        Error = $null
+        Normalized = $normalizedValue
+    }
+}
+
+function Resolve-ExtractionRootPath {
+    param([string]$ExtractionRoot)
+
+    $pathValidation = Test-SafePathInput -Value $ExtractionRoot -FieldName "ExtractionRoot"
+    if (-not $pathValidation.IsValid) {
+        throw $pathValidation.Error
+    }
+
+    $resolvedPath = [System.IO.Path]::GetFullPath($ExtractionRoot.Trim('"'))
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        New-Item -ItemType Directory -Path $resolvedPath -Force | Out-Null
+    }
+
+    return (Resolve-Path -LiteralPath $resolvedPath -ErrorAction Stop).ProviderPath
+}
+
+function Get-ArchiveTopLevelDirectoryName {
+    param([string]$ArchivePath)
+
+    $entries = @(& tar -tf $ArchivePath 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $entries -or $entries.Count -eq 0) {
+        throw "Failed to read archive contents from '$ArchivePath'."
+    }
+
+    foreach ($entry in $entries) {
+        $entryText = ($entry | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($entryText)) {
+            continue
+        }
+
+        $normalized = $entryText -replace '\\', '/'
+        $topLevel = ($normalized -split '/')[0]
+        if (-not [string]::IsNullOrWhiteSpace($topLevel)) {
+            return $topLevel
+        }
+    }
+
+    throw "Could not determine the top-level directory from '$ArchivePath'."
+}
+
+function Expand-SourceArchiveToPreparedPath {
+    param(
+        [string]$ArchivePath,
+        [string]$ExtractionRoot
+    )
+
+    $archiveValidation = Test-SourceArchivePath -ArchivePath $ArchivePath
+    if (-not $archiveValidation.IsValid) {
+        throw $archiveValidation.Error
+    }
+
+    $resolvedArchivePath = (Resolve-Path -LiteralPath $ArchivePath -ErrorAction Stop).ProviderPath
+    $resolvedExtractionRoot = Resolve-ExtractionRootPath -ExtractionRoot $ExtractionRoot
+    $topLevelDirectoryName = Get-ArchiveTopLevelDirectoryName -ArchivePath $resolvedArchivePath
+    $sourcePath = Join-Path $resolvedExtractionRoot $topLevelDirectoryName
+
+    $existingValidation = Test-CPythonSourceDirectory -Path $sourcePath
+    if (-not $existingValidation.IsValid) {
+        Write-Info "Extracting source archive '$resolvedArchivePath' to '$resolvedExtractionRoot'..."
+        & tar -xf $resolvedArchivePath -C $resolvedExtractionRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Archive extraction failed for '$resolvedArchivePath'."
+        }
+    } else {
+        Write-Info "Using existing extracted source at '$sourcePath'."
+    }
+
+    $validation = Test-CPythonSourceDirectory -Path $sourcePath
+    if (-not $validation.IsValid) {
+        throw $validation.Message
+    }
+
+    return @{
+        ArchivePath = $resolvedArchivePath
+        ExtractionRoot = $resolvedExtractionRoot
+        SourcePath = $validation.Path
+        Validation = $validation
+    }
+}
+
+function Get-UploadedSourceArchivePath {
+    param([string]$OriginalFileName)
+
+    if ([string]::IsNullOrWhiteSpace($OriginalFileName)) {
+        throw "Uploaded source archive is missing a file name."
+    }
+
+    $safeFileName = [System.IO.Path]::GetFileName($OriginalFileName)
+    if ([string]::IsNullOrWhiteSpace($safeFileName)) {
+        throw "Uploaded source archive file name is invalid."
+    }
+
+    $uploadRoot = Join-Path $PSScriptRoot "..\uploads\source-archives"
+    if (-not (Test-Path -LiteralPath $uploadRoot)) {
+        New-Item -ItemType Directory -Path $uploadRoot -Force | Out-Null
+    }
+
+    $targetPath = Join-Path $uploadRoot $safeFileName
+    if (Test-Path -LiteralPath $targetPath) {
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($safeFileName)
+        $extension = [System.IO.Path]::GetExtension($safeFileName)
+        if ($safeFileName -match '(?i)\.tar\.(gz|xz)$') {
+            $extension = ".tar.$($matches[1].ToLower())"
+            $baseName = $safeFileName.Substring(0, $safeFileName.Length - $extension.Length)
+        }
+        $targetPath = Join-Path $uploadRoot ("{0}-{1}{2}" -f $baseName, (Get-Date -Format "yyyyMMdd-HHmmss"), $extension)
+    }
+
+    return $targetPath
+}
+
+function Invoke-UploadSourceArchiveHandler {
+    param([System.Net.HttpListenerContext]$Context)
+
+    $fileName = $Context.Request.Headers["X-File-Name"]
+    if ([string]::IsNullOrWhiteSpace($fileName)) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Error = "Missing X-File-Name header."
+        } -StatusCode 400
+        return
+    }
+
+    try {
+        $fileName = [System.Uri]::UnescapeDataString($fileName)
+    } catch {
+        # Fall back to the raw header value if decoding fails.
+    }
+
+    try {
+        $targetPath = Get-UploadedSourceArchivePath -OriginalFileName $fileName
+        $output = [System.IO.File]::Open($targetPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try {
+            $Context.Request.InputStream.CopyTo($output)
+        } finally {
+            $output.Dispose()
+        }
+
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $true
+            ArchivePath = $targetPath
+            DisplayName = [System.IO.Path]::GetFileName($fileName)
+            Sha256 = Get-FileSha256 -Path $targetPath
+            Message = "Archive uploaded successfully. Choose an extract location to prepare the source tree."
+        }
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Error = $_.Exception.Message
+        } -StatusCode 500
+    }
+}
+
+function Invoke-BrowseSourceExtractRootHandler {
+    param([System.Net.HttpListenerContext]$Context)
+
+    $currentPath = ""
+    try {
+        $body = Get-RequestBody -Context $Context
+        if (-not [string]::IsNullOrWhiteSpace($body)) {
+            $data = $body | ConvertFrom-Json
+            if ($data.CurrentPath) {
+                $currentPath = [string]$data.CurrentPath
+            }
+        }
+    } catch {
+        # Ignore malformed optional payload and fall back to default dialog behavior.
+    }
+
+    try {
+        $selection = Show-FolderBrowserDialog -Description "Select the source extraction root directory" -SelectedPath $currentPath -AllowNewFolder $true
+        if (-not $selection.Selected) {
+            Send-JsonResponse -Context $Context -Data @{
+                Success = $false
+                Cancelled = $true
+            }
+            return
+        }
+
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $true
+            Cancelled = $false
+            Path = $selection.Path
+        }
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = "Failed to open source extraction folder browser: $($_.Exception.Message)"
+        } -StatusCode 500
+    }
+}
+
+function Invoke-BrowseReleaseRootHandler {
+    param([System.Net.HttpListenerContext]$Context)
+
+    $currentPath = ""
+    try {
+        $body = Get-RequestBody -Context $Context
+        if (-not [string]::IsNullOrWhiteSpace($body)) {
+            $data = $body | ConvertFrom-Json
+            if ($data.CurrentPath) {
+                $currentPath = [string]$data.CurrentPath
+            }
+        }
+    } catch {
+        # Ignore malformed optional payload and fall back to default dialog behavior.
+    }
+
+    try {
+        $selection = Show-FolderBrowserDialog -Description "Select the release output directory" -SelectedPath $currentPath -AllowNewFolder $true
+        if (-not $selection.Selected) {
+            Send-JsonResponse -Context $Context -Data @{
+                Success = $false
+                Cancelled = $true
+            }
+            return
+        }
+
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $true
+            Cancelled = $false
+            Path = $selection.Path
+        }
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = "Failed to open release folder browser: $($_.Exception.Message)"
+        } -StatusCode 500
+    }
+}
+
+function Invoke-PrepareSourceArchiveHandler {
+    param([System.Net.HttpListenerContext]$Context)
+
+    try {
+        $body = Get-RequestBody -Context $Context
+        $data = $body | ConvertFrom-Json
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = "Invalid JSON payload."
+        } -StatusCode 400
+        return
+    }
+
+    $archivePath = if ($data.ArchivePath) { [string]$data.ArchivePath } else { "" }
+    $extractionRoot = if ($data.ExtractionRoot) { [string]$data.ExtractionRoot } else { "" }
+    $expectedSha256 = if ($data.ExpectedSha256) { [string]$data.ExpectedSha256 } else { "" }
+    if ([string]::IsNullOrWhiteSpace($archivePath)) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = "Source archive is required."
+        } -StatusCode 400
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($extractionRoot)) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = "ExtractionRoot is required."
+        } -StatusCode 400
+        return
+    }
+    $shaValidation = Test-ExpectedSha256Value -Value $expectedSha256
+    if (-not $shaValidation.IsValid) {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Cancelled = $false
+            Error = $shaValidation.Error
+            Verification = @{
+                Status = "invalid"
+                ExpectedSha256 = $shaValidation.Normalized
+            }
+        } -StatusCode 400
+        return
+    }
+
+    try {
+        $actualSha256 = ConvertTo-Sha256Value -Value (Get-FileSha256 -Path $archivePath)
+        if ($actualSha256 -ne $shaValidation.Normalized) {
+            Send-JsonResponse -Context $Context -Data @{
+                Success = $false
+                Cancelled = $false
+                Error = "SHA256 verification failed. The selected archive does not match the expected SHA256."
+                Verification = @{
+                    Status = "mismatch"
+                    ExpectedSha256 = $shaValidation.Normalized
+                    ActualSha256 = $actualSha256
+                }
+            } -StatusCode 400
+            return
+        }
+
+        $prepared = Expand-SourceArchiveToPreparedPath -ArchivePath $archivePath -ExtractionRoot $extractionRoot
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $true
+            Cancelled = $false
+            ArchivePath = $prepared.ArchivePath
+            ExtractionRoot = $prepared.ExtractionRoot
+            SourcePath = $prepared.SourcePath
+            Validation = $prepared.Validation
+            Sha256 = $actualSha256
+            ExpectedSha256 = $shaValidation.Normalized
+            Verification = @{
+                Status = "verified"
+                ExpectedSha256 = $shaValidation.Normalized
+                ActualSha256 = $actualSha256
+            }
+            Message = "Archive extracted and source path prepared."
+            DisplayName = [System.IO.Path]::GetFileName($prepared.ArchivePath)
+        }
+    } catch {
+        Send-JsonResponse -Context $Context -Data @{
+            Success = $false
+            Error = $_.Exception.Message
+        } -StatusCode 500
+    }
 }
 
 function Resolve-PythonCandidate {
@@ -1344,6 +1977,37 @@ function Get-HtmlUI {
             align-items: flex-end;
         }
         .form-row input { flex: 1; }
+        .field-feedback {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #d6e2ee;
+            background: #eff5fb;
+            color: #274766;
+            font-size: 0.84em;
+            line-height: 1.35;
+            display: none;
+        }
+        .field-feedback.show { display: block; }
+        .field-feedback.success {
+            border-color: #b8e1c7;
+            background: #e9f8ef;
+            color: #1f6b42;
+        }
+        .field-feedback.error {
+            border-color: #f0c7c7;
+            background: #fff0f0;
+            color: #8b2020;
+        }
+        .field-feedback.info {
+            border-color: #d6e2ee;
+            background: #eff5fb;
+            color: #274766;
+        }
+        input[readonly] {
+            background: #eef3f8;
+            color: #4a5568;
+        }
         input[type="text"] {
             width: 100%;
             padding: 10px 12px;
@@ -1628,7 +2292,8 @@ function Get-HtmlUI {
                             </div>
 
                             <div class="form-group">
-                                <button class="btn btn-secondary" onclick="setupVenv()" id="setupVenvBtn">Setup Virtual Environment</button>
+                                <button class="btn btn-secondary" onclick="setupVenv()" id="setupVenvBtn">Update Venv Only</button>
+                                <div class="field-feedback info show">Optional advanced step. Start Build will automatically prepare or update the virtual environment first.</div>
                             </div>
                         </div>
                     </div>
@@ -1641,8 +2306,41 @@ function Get-HtmlUI {
                             <div id="alertContainer" class="alert-stack"></div>
 
                             <div class="form-group">
-                                <label for="sourcePath">CPython Source Path</label>
-                                <input type="text" id="sourcePath" placeholder="C:\src\Python-3.10.18\Python-3.10.18\Python-3.10.18" />
+                                <label for="sourceArchivePath">CPython Source Archive</label>
+                                <div class="form-row">
+                                    <input type="text" id="sourceArchivePath" placeholder="Choose a downloaded archive file with Browse..." readonly />
+                                    <button class="btn btn-secondary" type="button" onclick="openSourceArchivePicker()">Browse...</button>
+                                </div>
+                                <div id="sourceArchiveFeedback" class="field-feedback info">Choose the downloaded CPython source archive. The app will calculate SHA256 and then extract it to your chosen source folder.</div>
+                                <input type="file" id="sourceArchiveFilePicker" accept=".tar.xz,.tar.gz,.tgz,.zip" style="display:none" onchange="handleSourceArchiveSelection(event)" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sourceArchiveSha256">Archive SHA256</label>
+                                <input type="text" id="sourceArchiveSha256" placeholder="Calculated automatically after archive selection" readonly />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="expectedSourceArchiveSha256">Expected SHA256</label>
+                                <input type="text" id="expectedSourceArchiveSha256" placeholder="Paste the official SHA256 from python.org" oninput="handleExpectedSha256Input()" spellcheck="false" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sourceArchiveVerificationStatus">SHA Verification Status</label>
+                                <input type="text" id="sourceArchiveVerificationStatus" value="Waiting for archive selection" readonly />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sourceExtractRoot">Extract To</label>
+                                <div class="form-row">
+                                    <input type="text" id="sourceExtractRoot" value="C:\src" oninput="resetPreparedSourcePath()" />
+                                    <button class="btn btn-secondary" type="button" onclick="browseSourceExtractRoot()">Browse...</button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sourcePath">Prepared CPython Source Path</label>
+                                <input type="text" id="sourcePath" placeholder="Prepared automatically from the selected archive" readonly />
                             </div>
 
                             <div class="form-group">
@@ -1666,6 +2364,300 @@ function Get-HtmlUI {
     </div>
     
     <script>
+        let uploadedArchiveServerPath = '';
+        let uploadedArchiveDisplayName = '';
+        let sourceArchiveShaVerified = false;
+
+        function setSourceArchiveFeedback(type, message) {
+            const el = document.getElementById('sourceArchiveFeedback');
+            el.className = 'field-feedback show';
+            if (type === 'success' || type === 'error' || type === 'info') {
+                el.classList.add(type);
+            } else {
+                el.classList.add('info');
+            }
+            el.textContent = message;
+        }
+
+        function normalizeSha256(value) {
+            return (value || '').replace(/\s+/g, '').trim().toUpperCase();
+        }
+
+        function setSourceArchiveVerificationState(status, message) {
+            const verificationInput = document.getElementById('sourceArchiveVerificationStatus');
+            verificationInput.value = message;
+            sourceArchiveShaVerified = (status === 'verified');
+            updateSourceActionAvailability();
+        }
+
+        function updateSourceActionAvailability() {
+            const setupBtn = document.getElementById('setupVenvBtn');
+            const buildBtn = document.getElementById('startBuildBtn');
+            const archiveSelected = !!uploadedArchiveServerPath;
+            const shouldDisable = archiveSelected && !sourceArchiveShaVerified;
+            const blockedTitle = shouldDisable ? 'Verify the archive SHA256 before continuing.' : '';
+
+            if (setupBtn) {
+                setupBtn.disabled = shouldDisable;
+                setupBtn.title = blockedTitle;
+            }
+
+            if (buildBtn) {
+                buildBtn.disabled = shouldDisable;
+                buildBtn.title = blockedTitle;
+            }
+        }
+
+        function evaluateSourceArchiveVerification(options = {}) {
+            const actualSha = normalizeSha256(document.getElementById('sourceArchiveSha256').value);
+            const expectedSha = normalizeSha256(document.getElementById('expectedSourceArchiveSha256').value);
+            const hasArchive = !!uploadedArchiveServerPath && !!actualSha;
+
+            if (!hasArchive) {
+                setSourceArchiveVerificationState('waiting-archive', 'Waiting for archive selection');
+                return { isVerified: false, code: 'waiting-archive' };
+            }
+
+            if (!expectedSha) {
+                setSourceArchiveVerificationState('waiting-expected', 'Waiting for expected SHA');
+                if (options.updateFeedback !== false) {
+                    setSourceArchiveFeedback('info', 'Archive uploaded. Paste the official SHA256 from python.org to verify it before preparing the source tree.');
+                }
+                return { isVerified: false, code: 'waiting-expected' };
+            }
+
+            if (!/^[A-F0-9]{64}$/.test(expectedSha)) {
+                setSourceArchiveVerificationState('invalid', 'Invalid SHA format');
+                if (options.updateFeedback !== false) {
+                    setSourceArchiveFeedback('error', 'Expected SHA256 must be exactly 64 hexadecimal characters.');
+                }
+                return { isVerified: false, code: 'invalid' };
+            }
+
+            if (actualSha !== expectedSha) {
+                setSourceArchiveVerificationState('mismatch', 'Mismatch');
+                if (options.updateFeedback !== false) {
+                    setSourceArchiveFeedback('error', 'SHA256 mismatch. Compare the pasted SHA256 from python.org with the selected archive.');
+                }
+                return { isVerified: false, code: 'mismatch' };
+            }
+
+            setSourceArchiveVerificationState('verified', 'Verified');
+            if (options.updateFeedback !== false) {
+                setSourceArchiveFeedback('success', 'SHA256 verified. You can now prepare the source tree, set up the virtual environment, or start the build.');
+            }
+            return { isVerified: true, code: 'verified', expectedSha256: expectedSha, actualSha256: actualSha };
+        }
+
+        function handleExpectedSha256Input() {
+            resetPreparedSourcePath();
+            evaluateSourceArchiveVerification();
+        }
+
+        function resetSourceArchiveState() {
+            const archiveValue = document.getElementById('sourceArchivePath').value.trim();
+            if (!archiveValue) {
+                uploadedArchiveServerPath = '';
+                uploadedArchiveDisplayName = '';
+                document.getElementById('sourceArchiveSha256').value = '';
+                document.getElementById('expectedSourceArchiveSha256').value = '';
+                resetPreparedSourcePath();
+                evaluateSourceArchiveVerification({ updateFeedback: false });
+                setSourceArchiveFeedback('info', 'Choose the downloaded CPython source archive. The app will calculate SHA256 and then wait for the official expected SHA256 before preparing the source folder.');
+                return;
+            }
+            uploadedArchiveServerPath = '';
+            uploadedArchiveDisplayName = '';
+            document.getElementById('sourceArchiveSha256').value = '';
+            resetPreparedSourcePath();
+            setSourceArchiveFeedback('info', 'Archive path changed. Select the file again to upload it and calculate SHA256.');
+            evaluateSourceArchiveVerification({ updateFeedback: false });
+        }
+
+        function resetPreparedSourcePath() {
+            document.getElementById('sourcePath').value = '';
+        }
+
+        function applyUploadedArchiveState(data) {
+            const archiveInput = document.getElementById('sourceArchivePath');
+            if (data.ArchivePath) {
+                uploadedArchiveServerPath = data.ArchivePath;
+            }
+            if (data.DisplayName) {
+                uploadedArchiveDisplayName = data.DisplayName;
+                archiveInput.value = data.DisplayName;
+            }
+            if (data.Sha256) {
+                document.getElementById('sourceArchiveSha256').value = data.Sha256;
+            }
+            evaluateSourceArchiveVerification({ updateFeedback: false });
+        }
+
+        function applyPreparedSourceState(data) {
+            const sourcePathInput = document.getElementById('sourcePath');
+            if (data.ArchivePath) {
+                uploadedArchiveServerPath = data.ArchivePath;
+            }
+            if (data.ExtractionRoot) {
+                document.getElementById('sourceExtractRoot').value = data.ExtractionRoot;
+            }
+            if (data.SourcePath) {
+                sourcePathInput.value = data.SourcePath;
+            }
+            if (data.Sha256) {
+                document.getElementById('sourceArchiveSha256').value = data.Sha256;
+            }
+            if (data.ExpectedSha256) {
+                document.getElementById('expectedSourceArchiveSha256').value = data.ExpectedSha256;
+            }
+
+            const validation = data.Validation;
+            if (validation.IsValid) {
+                setSourceArchiveFeedback('success', data.Message || validation.Message || 'Archive prepared successfully.');
+            } else {
+                setSourceArchiveFeedback('error', validation.Message || 'Prepared source folder is invalid.');
+            }
+            evaluateSourceArchiveVerification({ updateFeedback: false });
+        }
+
+        async function prepareSourceArchive(archivePath, options = {}) {
+            const archiveValue = (archivePath || '').trim();
+            const extractionRoot = document.getElementById('sourceExtractRoot').value.trim();
+            const verification = evaluateSourceArchiveVerification();
+            if (!archiveValue) {
+                throw new Error('Please provide a CPython source archive.');
+            }
+            if (!extractionRoot) {
+                throw new Error('Please provide an extract-to folder.');
+            }
+            if (!verification.isVerified) {
+                throw new Error('Please verify the archive SHA256 before preparing the source tree.');
+            }
+
+            setSourceArchiveFeedback('info', 'Extracting archive to the selected source folder...');
+
+            const response = await fetch('/api/prepare-source-archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ArchivePath: archiveValue,
+                    ExtractionRoot: extractionRoot,
+                    ExpectedSha256: verification.expectedSha256
+                })
+            });
+            const data = await response.json();
+
+            if (!data.Success) {
+                throw new Error(data.Error || 'Unable to prepare source archive.');
+            }
+
+            applyPreparedSourceState(data);
+            if (options.showSuccessAlert) {
+                showAlert('Source archive prepared successfully.', 'success');
+            }
+            return data;
+        }
+
+        async function ensurePreparedSourcePath() {
+            const sourcePathInput = document.getElementById('sourcePath');
+            const archiveValue = uploadedArchiveServerPath;
+            const sourcePathValue = sourcePathInput.value.trim();
+            const verification = evaluateSourceArchiveVerification();
+
+            if (!verification.isVerified) {
+                throw new Error('Please verify the archive SHA256 before continuing.');
+            }
+
+            if (archiveValue && !sourcePathValue) {
+                const prepared = await prepareSourceArchive(archiveValue, { showSuccessAlert: false });
+                return prepared.SourcePath;
+            }
+
+            if (!sourcePathValue) {
+                throw new Error('Please choose a CPython source archive first.');
+            }
+
+            return sourcePathValue;
+        }
+
+        function openSourceArchivePicker() {
+            const picker = document.getElementById('sourceArchiveFilePicker');
+            if (picker) {
+                picker.click();
+            }
+        }
+
+        async function handleSourceArchiveSelection(event) {
+            const picker = event.target;
+            if (!picker || !picker.files || picker.files.length === 0) {
+                return;
+            }
+
+            const selectedFile = picker.files[0];
+            const archiveInput = document.getElementById('sourceArchivePath');
+            archiveInput.value = selectedFile.name;
+            resetPreparedSourcePath();
+            setSourceArchiveFeedback('info', 'Uploading selected archive and calculating SHA256...');
+
+            try {
+                const response = await fetch('/api/upload-source-archive', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'X-File-Name': encodeURIComponent(selectedFile.name)
+                    },
+                    body: selectedFile
+                });
+                const data = await response.json();
+
+                if (!data.Success) {
+                    throw new Error(data.Error || 'Unable to upload source archive.');
+                }
+
+                applyUploadedArchiveState(data);
+                evaluateSourceArchiveVerification();
+                showAlert('Source archive uploaded and SHA256 calculated.', 'success');
+            } catch (error) {
+                showAlert('Error selecting source archive: ' + error.message, 'error');
+                setSourceArchiveFeedback('error', error.message);
+            } finally {
+                picker.value = '';
+            }
+        }
+
+        async function browseSourceExtractRoot() {
+            const extractRootInput = document.getElementById('sourceExtractRoot');
+            try {
+                const response = await fetch('/api/browse-source-extract-root', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ CurrentPath: extractRootInput.value })
+                });
+                const data = await response.json();
+
+                if (data.Cancelled) {
+                    return;
+                }
+
+                if (!data.Success) {
+                    throw new Error(data.Error || 'Unable to select source extraction folder.');
+                }
+
+                if (data.Path) {
+                    extractRootInput.value = data.Path;
+                    resetPreparedSourcePath();
+                    if (uploadedArchiveServerPath && sourceArchiveShaVerified) {
+                        setSourceArchiveFeedback('info', 'Source extraction folder selected. SHA256 is still verified and the source tree will be prepared when needed.');
+                        showAlert('Source extraction folder selected.', 'success');
+                    } else {
+                        showAlert('Source extraction folder selected.', 'success');
+                    }
+                }
+            } catch (error) {
+                showAlert('Error selecting source extraction folder: ' + error.message, 'error');
+            }
+        }
+
         function setInlineBuildStatus(status, message) {
             const el = document.getElementById('buildInlineStatus');
             el.className = 'build-inline-status';
@@ -1712,57 +2704,77 @@ function Get-HtmlUI {
                 showAlert('Error detecting paths: ' + error.message, 'error');
             }
         }
-        
-        async function setupVenv() {
-            const sourcePath = document.getElementById('sourcePath').value;
+
+        function resetSetupVenvButtonState() {
+            const btn = document.getElementById('setupVenvBtn');
+            btn.textContent = 'Update Venv Only';
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+            btn.style.cursor = '';
+            updateSourceActionAvailability();
+        }
+
+        async function ensureVenvReady(options = {}) {
+            let sourcePath = document.getElementById('sourcePath').value;
             const bootstrapPython = document.getElementById('bootstrapPython').value;
             const venvName = document.getElementById('venvName').value;
-            
-            if (!sourcePath || !bootstrapPython) {
-                showAlert('Please provide source path and bootstrap Python', 'error');
-                return;
+            const setupBtn = document.getElementById('setupVenvBtn');
+            const startBuildBtn = document.getElementById('startBuildBtn');
+            const isAutomatic = options.automatic === true;
+
+            if (!bootstrapPython) {
+                throw new Error('Please provide bootstrap Python');
             }
-            
-            const btn = document.getElementById('setupVenvBtn');
-            btn.disabled = true;
-            btn.textContent = 'Setting up...';
-            
+
+            setupBtn.disabled = true;
+            setupBtn.textContent = isAutomatic ? 'Auto-Preparing Venv...' : 'Updating Venv...';
+            startBuildBtn.disabled = true;
+
+            if (isAutomatic) {
+                setInlineBuildStatus('running', 'Preparing virtual environment before build...');
+            }
+
+            sourcePath = await ensurePreparedSourcePath();
+            const response = await fetch('/api/setup-venv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    SourcePath: sourcePath,
+                    BootstrapPython: bootstrapPython,
+                    VenvName: venvName
+                })
+            });
+            const data = await response.json();
+
+            if (!data.Success) {
+                throw new Error(data.Error || 'Failed to set up virtual environment.');
+            }
+
+            const message = data.Message || 'Virtual environment ready';
+            const statusText = data.Message && data.Message.includes('updated')
+                ? 'Venv Updated: '
+                : 'Venv Ready: ';
+            setupBtn.textContent = statusText + venvName;
+            setupBtn.style.background = '#28a745';
+            setupBtn.style.color = 'white';
+            setupBtn.style.borderColor = '#28a745';
+            setupBtn.style.cursor = 'default';
+            setupBtn.disabled = false;
+
+            if (!isAutomatic) {
+                showAlert(message, 'success');
+            }
+
+            return data;
+        }
+
+        async function setupVenv() {
             try {
-                const response = await fetch('/api/setup-venv', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        SourcePath: sourcePath,
-                        BootstrapPython: bootstrapPython,
-                        VenvName: venvName
-                    })
-                });
-                const data = await response.json();
-                
-                if (data.Success) {
-                    const message = data.Message || 'Virtual environment ready';
-                    showAlert(message, 'success');
-                    
-                    // Update button to show success
-                    const statusText = data.Message && data.Message.includes('updated') 
-                        ? 'Venv Updated: ' 
-                        : 'Venv Created: ';
-                    btn.textContent = statusText + venvName;
-                    btn.style.background = '#28a745';
-                    btn.style.color = 'white';
-                    btn.style.borderColor = '#28a745';
-                    btn.style.cursor = 'default';
-                } else {
-                    showAlert('Failed to setup venv: ' + data.Error, 'error');
-                    btn.disabled = false;
-                    btn.textContent = 'Setup Virtual Environment';
-                    btn.style.background = '';
-                    btn.style.cursor = '';
-                }
+                await ensureVenvReady({ automatic: false });
             } catch (error) {
                 showAlert('Error setting up venv: ' + error.message, 'error');
-                btn.disabled = false;
-                btn.textContent = 'Setup Virtual Environment';
+                resetSetupVenvButtonState();
             }
         }
         
@@ -1851,23 +2863,27 @@ function Get-HtmlUI {
         }
         
         async function startBuild() {
-            const sourcePath = document.getElementById('sourcePath').value;
+            let sourcePath = document.getElementById('sourcePath').value;
             const bootstrapPython = document.getElementById('bootstrapPython').value;
             const venvName = document.getElementById('venvName').value;
             const releaseRoot = document.getElementById('releaseRoot').value;
             const winSdkVersion = document.getElementById('winSdkVersion').value;
             
-            if (!sourcePath || !bootstrapPython) {
-                showAlert('Please provide source path and bootstrap Python', 'error');
+            if (!bootstrapPython) {
+                showAlert('Please provide bootstrap Python', 'error');
                 return;
             }
             
             const btn = document.getElementById('startBuildBtn');
             btn.disabled = true;
-            btn.textContent = 'Starting...';
-            setInlineBuildStatus('running', 'Starting build in external terminal...');
+            btn.textContent = 'Preparing Venv...';
+            setInlineBuildStatus('running', 'Preparing virtual environment before build...');
             
             try {
+                await ensureVenvReady({ automatic: true });
+                sourcePath = await ensurePreparedSourcePath();
+                btn.textContent = 'Starting Build...';
+                setInlineBuildStatus('running', 'Virtual environment ready. Starting build in external terminal...');
                 const response = await fetch('/api/build', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1908,6 +2924,7 @@ function Get-HtmlUI {
                 btn.textContent = 'Start Build (Opens New Window)';
                 btn.style.background = '';
                 setInlineBuildStatus('failed', 'Error while starting build: ' + error.message);
+                resetSetupVenvButtonState();
             }
         }
         
@@ -2040,6 +3057,7 @@ function Get-HtmlUI {
         
         // Auto-detect on load
         setInlineBuildStatus('idle', 'Not started. Build runs in an external terminal window.');
+        resetSourceArchiveState();
         checkPrerequisites();
         detectPaths();
     </script>
@@ -2107,6 +3125,14 @@ function Start-WebServer {
                             Send-JsonResponse -Context $context -Data @{
                                 Python = $pythonPath
                             }
+                        } elseif ($path -eq "/api/upload-source-archive") {
+                            Invoke-UploadSourceArchiveHandler -Context $context
+                        } elseif ($path -eq "/api/browse-source-extract-root") {
+                            Invoke-BrowseSourceExtractRootHandler -Context $context
+                        } elseif ($path -eq "/api/prepare-source-archive") {
+                            Invoke-PrepareSourceArchiveHandler -Context $context
+                        } elseif ($path -eq "/api/browse-release-root") {
+                            Invoke-BrowseReleaseRootHandler -Context $context
                         } elseif ($path -match "^/api/docs/(.+)$") {
                             $docName = $matches[1]
                             Invoke-DocumentationHandler -Context $context -DocName $docName
