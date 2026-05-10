@@ -1910,27 +1910,20 @@ function Get-HtmlUI {
             border-radius: 2px;
         }
         .status-summary {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9em;
+            display: block;
+            font-size: 0.92em;
             font-weight: 700;
-            border-radius: 999px;
-            padding: 6px 10px;
+            border-radius: 8px;
+            padding: 10px 12px;
             background: #e7f6ed;
             color: #1e6f42;
+            border: 1px solid #cfe7d9;
+            line-height: 1.35;
         }
         .status-summary.warn {
             background: #fdeceb;
             color: #8a1f1f;
-        }
-        .quick-health {
-            font-size: 0.92em;
-            color: #36526f;
-            background: #eef4fb;
-            border: 1px solid #d7e4f2;
-            border-radius: 8px;
-            padding: 10px 12px;
+            border-color: #f1d0cf;
         }
         .build-state {
             display: flex;
@@ -2177,8 +2170,8 @@ function Get-HtmlUI {
             padding: 9px 12px;
             border-radius: 8px;
             border: 1px solid #d6e2ee;
-            background: #eff5fb;
-            color: #274766;
+            background: #f7fafc;
+            color: #4a647e;
             font-size: 0.88em;
             line-height: 1.35;
         }
@@ -2264,7 +2257,6 @@ function Get-HtmlUI {
                                     <span>Checking prerequisites...</span>
                                 </div>
                             </div>
-                            <div id="quickHealthText" class="quick-health" style="margin-top: 10px;">Health summary will appear after prerequisite check.</div>
                         </div>
                     </div>
 
@@ -2931,12 +2923,9 @@ function Get-HtmlUI {
         async function checkPrerequisites() {
             const panel = document.getElementById('prereqPanel');
             const summary = document.getElementById('prereqSummary');
-            const quickHealth = document.getElementById('quickHealthText');
             panel.innerHTML = '<div style="text-align: center; padding: 20px;"><div style="display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(55, 118, 171, 0.3); border-radius: 50%; border-top-color: #3776ab; animation: spin 1s linear infinite; margin-right: 8px;"></div><span>Checking prerequisites...</span></div>';
             summary.className = 'status-summary';
-            summary.textContent = 'Checking...';
-            quickHealth.className = 'quick-health';
-            quickHealth.textContent = 'Checking environment health...';
+            summary.textContent = 'Checking prerequisites and environment health...';
             
             try {
                 const response = await fetch('/api/prerequisites');
@@ -3037,26 +3026,23 @@ function Get-HtmlUI {
                 if (data.AllReady) {
                     html += '<div class="alert alert-success" style="margin-top: 15px;">All prerequisites are ready! You can proceed with the build.</div>';
                     summary.className = 'status-summary';
-                    summary.textContent = 'All Ready';
-                    quickHealth.textContent = 'Environment health is green. Build can be started.';
+                    summary.textContent = 'All Ready. Build can be started.';
                 } else {
                     html += '<div class="alert alert-error" style="margin-top: 15px;">Some prerequisites are missing. Click the "Setup Guide" links above for installation instructions.</div>';
                     summary.className = 'status-summary warn';
-                    summary.textContent = missingCount + ' Missing';
-                    quickHealth.textContent = 'Environment health needs attention. Resolve missing prerequisites first.';
+                    summary.textContent = missingCount + ' Missing. Resolve missing prerequisites first.';
                 }
                 
                 panel.innerHTML = html;
             } catch (error) {
                 panel.innerHTML = '<div class="alert alert-error">Error checking prerequisites: ' + error.message + '</div>';
                 summary.className = 'status-summary warn';
-                summary.textContent = 'Check Failed';
-                quickHealth.textContent = 'Prerequisite check failed. Refresh and verify setup.';
+                summary.textContent = 'Check Failed. Refresh and verify setup.';
             }
         }
         
         // Auto-detect on load
-        setInlineBuildStatus('idle', 'Not started. Build runs in an external terminal window.');
+        setInlineBuildStatus('idle', 'Ready to start. Build output opens in a separate terminal window.');
         resetSourceArchiveState();
         checkPrerequisites();
         detectPaths();
