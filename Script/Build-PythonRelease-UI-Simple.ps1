@@ -2415,16 +2415,19 @@ function Get-HtmlUI {
     <div id="certificationModal" class="certification-modal" role="dialog" aria-modal="true" aria-labelledby="certificationTitle">
         <div class="certification-dialog">
             <div class="certification-header">
-                <div id="certificationTitle" class="certification-title">Certification required before venv setup</div>
+                <div id="certificationTitle" class="certification-title">Enterprise SSL check before venv setup</div>
             </div>
             <div class="certification-body">
-                <div>The source archive has been prepared. Run your internal certification tool against this extracted source folder before continuing.</div>
+                <div>The source archive has been prepared and the virtual environment is about to install Python packages with pip.</div>
+                <div>On enterprise workstations with TLS inspection or managed certificate stores, pip may fail with SSL certificate errors unless Python trusts the corporate root certificates. If needed, run:</div>
+                <div class="certification-path">python -m pip install pip-system-certs</div>
+                <div>Prepared source path:</div>
                 <div id="certificationSourcePath" class="certification-path"></div>
-                <div>After the certification tool has completed successfully, confirm below to continue with the virtual environment step.</div>
+                <div>Continue when your Python/pip certificate setup is ready.</div>
             </div>
             <div class="certification-actions">
                 <button class="btn btn-secondary" type="button" id="cancelCertificationBtn">Cancel</button>
-                <button class="btn btn-primary" type="button" id="confirmCertificationBtn">Certifierat, forts&auml;tt</button>
+                <button class="btn btn-primary" type="button" id="confirmCertificationBtn">Continue</button>
             </div>
         </div>
     </div>
@@ -2684,10 +2687,10 @@ function Get-HtmlUI {
                 pendingCertificationResolve = (confirmed) => {
                     if (confirmed) {
                         certifiedPreparedSourcePath = normalizedPath;
-                        showAlert('Source certification confirmed.', 'success');
+                        showAlert('Enterprise SSL notice acknowledged.', 'success');
                         resolve();
                     } else {
-                        reject(new Error('Source certification was cancelled.'));
+                        reject(new Error('Venv setup cancelled before pip install.'));
                     }
                 };
             });
