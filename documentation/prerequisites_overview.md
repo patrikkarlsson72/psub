@@ -10,13 +10,13 @@ Before starting a build, ensure you have:
   - Desktop development with C++ workload
   - MSVC toolchains (x64/x86, ARM64)
 - `Visual Studio 2019` remains supported as a compatibility fallback
-- `Windows 10 SDK` (version 10.0.19041.0 or later)
+- `Windows SDK` version 10.0.19041.0 or later (Windows 10 SDK or Windows 11 SDK)
 - `Bootstrap Python` (3.10 or 3.12, not 3.13)
 - `Git for Windows` (recommended for repo operations and build metadata, but not required to start PSUB)
 - `.NET Framework 3.5` (includes .NET 2.0 and 3.0, required for legacy WiX/MSI flows such as Python 3.10)
 - `CPython source code` (extracted to a local directory)
 
-PSUB can use a newer installed Windows SDK automatically when the older minimum version is not present.
+PSUB can use a newer installed Windows SDK automatically, including the Windows 11 SDK commonly installed with Visual Studio 2022 on Windows 11.
 PSUB can also build successfully without Git when working from an extracted `python.org` source tree, although Git is still recommended for repository workflows and metadata capture.
 
 ## Detailed Setup Guides

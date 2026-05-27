@@ -13,7 +13,7 @@ Verify that PSUB works on a fresh Windows machine with no dependency on an older
 3. In `Individual components`, ensure these are installed:
    - `MSVC v143 - VS 2022 C++ x64/x86 build tools`
    - `MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools (Latest)`
-   - `Windows 10 SDK (10.0.19041.0)` or newer
+   - `Windows SDK 10.0.19041.0 or later` (Windows 10 SDK or Windows 11 SDK)
 4. Optionally install the `Python development` workload if you want the extra tooling, but it is not required for PSUB builds.
 5. Optionally install `Git for Windows` if you want normal repo workflows on the machine.
 6. Install bootstrap Python:
@@ -77,7 +77,7 @@ The UI prefers port `8080`, but if that port is already taken it automatically p
 - Git should appear as recommended rather than blocking
 
 If `Auto-Detect` does not find Python, enter the full path to the real `python.exe` from the python.org installation. Do not use the `WindowsApps` alias path.
-If the detected Windows SDK shown in prerequisites is newer than `10.0.19041.0`, PSUB should now prefill that detected version automatically in the build settings.
+If Visual Studio installed a newer Windows SDK, such as a Windows 11 SDK, PSUB should prefill that detected version automatically in the build settings.
 If Git is missing, the environment can still be ready for build as long as the required toolchain, SDK, and bootstrap Python are present.
 
 ## First CLI Test

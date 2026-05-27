@@ -29,7 +29,7 @@ Before starting a build, make sure the machine has:
 
 - Visual Studio 2022 with the required C++ toolchain components
 - Visual Studio 2019 only if you need the fallback path
-- Windows 10 SDK `10.0.19041.0` or later
+- Windows SDK `10.0.19041.0` or later (Windows 10 SDK or Windows 11 SDK)
 - Bootstrap Python `3.10` or `3.12`
 - Git for Windows if you want repo operations and build metadata support
 - .NET Framework 3.5 for legacy WiX/MSI build flows such as Python 3.10

@@ -1,12 +1,12 @@
 # Setting Up Windows SDK for Python Builds
 
-This guide explains how to install the required Windows 10 SDK version for building Python security releases.
+This guide explains how to verify or install a compatible Windows SDK for building Python security releases.
 
 ## Required Version
 
-**Windows 10 SDK version 10.0.19041.0** (or later)
+**Windows SDK version 10.0.19041.0** or later (Windows 10 SDK or Windows 11 SDK)
 
-This is the minimum required version. PSUB prefers the requested SDK version, but can automatically fall forward to a compatible installed SDK such as `10.0.26100.0` when that is what exists on the machine.
+This is the minimum required version. PSUB prefers the requested SDK version, but can automatically fall forward to a compatible installed SDK such as the Windows 11 SDK `10.0.26100.0` when that is what exists on the machine.
 
 ## Installation Methods
 
@@ -15,13 +15,13 @@ This is the minimum required version. PSUB prefers the requested SDK version, bu
 1. Open **Visual Studio Installer**
 2. Click **"Modify"** on your Visual Studio 2022 or 2019 installation
 3. Go to the **Individual components** tab
-4. Search for **"Windows 10 SDK"**
-5. Check **"Windows 10 SDK (10.0.19041.0)"** or a later version
+4. Search for **"Windows SDK"**
+5. Check an installed or available SDK version **10.0.19041.0** or later. On Windows 11, the C++ workload may already include a Windows 11 SDK such as **10.0.26100.0**.
 6. Click **"Modify"** to install
 
 ### Method 2: Standalone Installer
 
-1. Download Windows 10 SDK from:
+1. Download Windows SDK from:
    https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
 2. Download version **10.0.19041.0** or later
 3. Run the installer
@@ -57,7 +57,7 @@ After installation, verify the SDK is installed:
 
 **Solution:**
 - Verify the SDK is installed in the correct location
-- Check that version 10.0.19041.0 or later is installed
+- Check that Windows SDK version 10.0.19041.0 or later is installed
 - Reinstall via Visual Studio Installer if needed
 
 ### Wrong SDK Version

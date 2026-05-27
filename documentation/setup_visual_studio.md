@@ -39,10 +39,10 @@ You need the x64/x86 and ARM64 toolchains available in the selected Visual Studi
 3. **If you are using Visual Studio 2019 instead**
    - Install the equivalent `MSVC v142` x64/x86 and ARM64 components
 
-### Windows 10 SDK
+### Windows SDK
 
-- **Windows 10 SDK (10.0.19041.0)** or later
-- Should be included with the Desktop development workload
+- **Windows SDK 10.0.19041.0 or later** (Windows 10 SDK or Windows 11 SDK)
+- Should be included with the Desktop development workload; on Windows 11, Visual Studio 2022 often selects a Windows 11 SDK automatically, and that is fine
 - Verify it's installed in a versioned folder such as `C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0` or `C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0`
 
 ## Installation Steps
@@ -81,9 +81,8 @@ After installation, verify Visual Studio is set up correctly:
 - Search for `MSVC` and install the x64/x86 and ARM64 variants for that version
 
 ### Wrong SDK version
-- The build requires Windows 10 SDK 10.0.19041.0 or later
-- Install it via Visual Studio Installer → Individual components
-- Or download from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
+- The build requires Windows SDK 10.0.19041.0 or later
+- Use the SDK installed by the C++ workload, install a compatible Windows 10/11 SDK via Visual Studio Installer, or download from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
 - PSUB can use a newer installed SDK automatically when the older minimum version is not present
 
 ## Next Steps

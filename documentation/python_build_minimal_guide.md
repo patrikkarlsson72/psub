@@ -21,8 +21,8 @@ If you must use Visual Studio 2019 instead, install the equivalent `v142` compon
 > WiX 3.14 requires ARM64 toolchains even when building x64 installers.
 
 ## Windows SDK
-- Windows 10 SDK (10.0.19041.0 or later)
-- If your machine has a newer installed SDK, for example `10.0.26100.0`, PSUB can use that version
+- Windows SDK 10.0.19041.0 or later (Windows 10 SDK or Windows 11 SDK)
+- If Visual Studio installed a newer SDK, for example `10.0.26100.0`, PSUB can use that version
 
 ## Python for bootstrap
 Install:

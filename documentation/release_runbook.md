@@ -26,7 +26,7 @@ This runbook captures the repeatable workflow for building CPython security rele
 - Git available: `git --version` (recommended, not required)
 - Bootstrap Python available: 3.10 or 3.12
 - Visual Studio 2022 Professional (recommended) or Visual Studio 2019 with C++ workload/toolchains installed
-- Windows SDK available (10.0.19041.0 or later)
+- Windows SDK available (10.0.19041.0 or later; Windows 10 SDK or Windows 11 SDK)
 - Record the actual SDK version used if PSUB falls forward to a newer installed version
 
 If the source tree comes from an extracted `python.org` archive rather than a Git checkout, Git-related warnings from CPython build steps can be expected and are not automatically build failures.
