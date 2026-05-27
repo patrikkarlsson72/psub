@@ -32,7 +32,7 @@ You need the x64/x86 and ARM64 toolchains available in the selected Visual Studi
 1. **MSVC v143 - VS 2022 C++ x64/x86 build tools**
    - Required for building x64 and x86 Python binaries
 
-2. **MSVC v143 - VS 2022 C++ ARM64 build tools**
+2. **MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools (Latest)**
    - Required for ARM64 builds
    - Also required by WiX 3.14 even when building x64 installers
 

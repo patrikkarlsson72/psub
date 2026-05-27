@@ -14,7 +14,7 @@
 Ensure these **Individual Components** are installed:
 
 - MSVC v143 – VS 2022 C++ x64/x86 build tools  
-- MSVC v143 – VS 2022 C++ ARM64 build tools  
+- MSVC v143 – VS 2022 C++ ARM64/ARM64EC build tools (Latest)
 
 If you must use Visual Studio 2019 instead, install the equivalent `v142` components.
 

@@ -12,7 +12,7 @@ Verify that PSUB works on a fresh Windows machine with no dependency on an older
 2. In Visual Studio Installer, select the `Desktop development with C++` workload.
 3. In `Individual components`, ensure these are installed:
    - `MSVC v143 - VS 2022 C++ x64/x86 build tools`
-   - `MSVC v143 - VS 2022 C++ ARM64 build tools`
+   - `MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools (Latest)`
    - `Windows 10 SDK (10.0.19041.0)` or newer
 4. Optionally install the `Python development` workload if you want the extra tooling, but it is not required for PSUB builds.
 5. Optionally install `Git for Windows` if you want normal repo workflows on the machine.
