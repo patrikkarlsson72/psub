@@ -1170,6 +1170,58 @@ function Test-Git {
     }
 }
 
+function Test-EnterpriseSslSupport {
+    param([object[]]$PythonCandidates)
+
+    $packageName = "pip-system-certs"
+    $pythonCandidate = @($PythonCandidates) | Select-Object -First 1
+    $fallbackCommand = "python -m pip install $packageName"
+
+    if (-not $pythonCandidate -or [string]::IsNullOrWhiteSpace($pythonCandidate.Path)) {
+        return @{
+            Checked = $false
+            Installed = $false
+            PythonPath = $null
+            PackageName = $packageName
+            Recommended = $true
+            InstallCommand = $fallbackCommand
+            Message = "Bootstrap Python has not been detected yet. On enterprise workstations, install pip-system-certs for the bootstrap Python if pip reports SSL certificate errors."
+        }
+    }
+
+    $pythonPath = $pythonCandidate.Path
+    $installCommand = "`"$pythonPath`" -m pip install $packageName"
+
+    try {
+        & $pythonPath -m pip show $packageName *> $null
+        $installed = ($LASTEXITCODE -eq 0)
+
+        return @{
+            Checked = $true
+            Installed = $installed
+            PythonPath = $pythonPath
+            PackageName = $packageName
+            Recommended = $true
+            InstallCommand = $installCommand
+            Message = if ($installed) {
+                "pip-system-certs is installed for the detected bootstrap Python."
+            } else {
+                "On enterprise workstations with TLS inspection or managed certificate stores, pip may fail with SSL certificate errors unless Python trusts the corporate root certificates. Install pip-system-certs for the bootstrap Python if you see SSL errors during venv setup."
+            }
+        }
+    } catch {
+        return @{
+            Checked = $true
+            Installed = $false
+            PythonPath = $pythonPath
+            PackageName = $packageName
+            Recommended = $true
+            InstallCommand = $installCommand
+            Message = "Could not check pip-system-certs for the detected bootstrap Python. If you see SSL errors during venv setup, run the command shown in the prerequisites panel."
+        }
+    }
+}
+
 function Test-SafePathInput {
     param(
         [string]$Value,
@@ -1273,6 +1325,7 @@ function Invoke-PrerequisitesHandler {
     $toolchains = Test-MSVCToolchains
     $sdk = Test-WindowsSDK
     $python = Find-BootstrapPython
+    $enterpriseSsl = Test-EnterpriseSslSupport -PythonCandidates @($python)
     $git = Test-Git
     
     $result = @{
@@ -1303,6 +1356,15 @@ function Invoke-PrerequisitesHandler {
             Version = $git.Version
             Path = $git.Path
             Recommended = $true
+        }
+        EnterpriseSsl = @{
+            Checked = $enterpriseSsl.Checked
+            Installed = $enterpriseSsl.Installed
+            PythonPath = $enterpriseSsl.PythonPath
+            PackageName = $enterpriseSsl.PackageName
+            Recommended = $enterpriseSsl.Recommended
+            InstallCommand = $enterpriseSsl.InstallCommand
+            Message = $enterpriseSsl.Message
         }
         AllReady = ($vs.Installed -and $toolchains.AllPresent -and $sdk.Installed -and ($python.Count -gt 0))
     }
@@ -2124,6 +2186,9 @@ function Get-HtmlUI {
         .prereq-item.not-ready {
             border-left-color: #dc3545;
         }
+        .prereq-item.warning {
+            border-left-color: #f59e0b;
+        }
         .prereq-item .status-icon {
             font-size: 1em;
         }
@@ -2134,6 +2199,29 @@ function Get-HtmlUI {
         .prereq-item .status-icon.not-ready::before {
             content: "\2717";
             color: #dc3545;
+        }
+        .prereq-item .status-icon.warning::before {
+            content: "!";
+            color: #d97706;
+            font-weight: 800;
+        }
+        .prereq-detail {
+            margin-top: 6px;
+            color: #4a647e;
+            font-size: 0.88em;
+            line-height: 1.35;
+        }
+        .prereq-command {
+            margin-top: 6px;
+            padding: 6px 8px;
+            border: 1px solid #d6e2ee;
+            border-radius: 6px;
+            background: #eef3f8;
+            color: #2d3748;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 0.84em;
+            overflow-wrap: anywhere;
+            text-align: left;
         }
         .help-link {
             margin-left: 6px;
@@ -2190,62 +2278,6 @@ function Get-HtmlUI {
             background: #fff0f0;
             color: #8b2020;
         }
-        .certification-modal {
-            position: fixed;
-            inset: 0;
-            z-index: 50;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            background: rgba(8, 18, 35, 0.68);
-        }
-        .certification-modal.show { display: flex; }
-        .certification-dialog {
-            width: min(620px, 100%);
-            background: #f8fafc;
-            border: 1px solid #d8e4f0;
-            border-radius: 8px;
-            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-            color: #24384d;
-        }
-        .certification-header {
-            padding: 14px 16px;
-            border-bottom: 1px solid #dce6f0;
-        }
-        .certification-title {
-            color: #1a3c5e;
-            font-size: 1.05em;
-            font-weight: 700;
-        }
-        .certification-body {
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            font-size: 0.9em;
-            line-height: 1.45;
-        }
-        .certification-path {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #cbd5e0;
-            border-radius: 8px;
-            background: #eef3f8;
-            color: #2d3748;
-            font-family: Consolas, 'Courier New', monospace;
-            font-size: 0.86em;
-            overflow-wrap: anywhere;
-        }
-        .certification-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            padding: 14px 16px;
-            border-top: 1px solid #dce6f0;
-            background: #f1f6fb;
-            border-radius: 0 0 8px 8px;
-        }
         details.advanced {
             border: 1px solid #d3e2f1;
             background: #f5f9ff;
@@ -2285,7 +2317,6 @@ function Get-HtmlUI {
             .prereq-value { text-align: left; }
             .prereq-label { min-width: 0; }
             .primary-actions .btn-primary { width: 100%; min-width: 0; }
-            .certification-actions { flex-direction: column-reverse; align-items: stretch; }
         }
         @keyframes spin {
             to { transform: rotate(360deg); }
@@ -2412,32 +2443,10 @@ function Get-HtmlUI {
         </div>
     </div>
 
-    <div id="certificationModal" class="certification-modal" role="dialog" aria-modal="true" aria-labelledby="certificationTitle">
-        <div class="certification-dialog">
-            <div class="certification-header">
-                <div id="certificationTitle" class="certification-title">Enterprise SSL check before venv setup</div>
-            </div>
-            <div class="certification-body">
-                <div>The source archive has been prepared and the virtual environment is about to install Python packages with pip.</div>
-                <div>On enterprise workstations with TLS inspection or managed certificate stores, pip may fail with SSL certificate errors unless Python trusts the corporate root certificates. If needed, run:</div>
-                <div class="certification-path">python -m pip install pip-system-certs</div>
-                <div>Prepared source path:</div>
-                <div id="certificationSourcePath" class="certification-path"></div>
-                <div>Continue when your Python/pip certificate setup is ready.</div>
-            </div>
-            <div class="certification-actions">
-                <button class="btn btn-secondary" type="button" id="cancelCertificationBtn">Cancel</button>
-                <button class="btn btn-primary" type="button" id="confirmCertificationBtn">Continue</button>
-            </div>
-        </div>
-    </div>
-    
     <script>
         let uploadedArchiveServerPath = '';
         let uploadedArchiveDisplayName = '';
         let sourceArchiveShaVerified = false;
-        let certifiedPreparedSourcePath = '';
-        let pendingCertificationResolve = null;
 
         function setSourceArchiveFeedback(type, message) {
             const el = document.getElementById('sourceArchiveFeedback');
@@ -2452,6 +2461,15 @@ function Get-HtmlUI {
 
         function normalizeSha256(value) {
             return (value || '').replace(/\s+/g, '').trim().toUpperCase();
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function setSourceArchiveVerificationState(status, message) {
@@ -2525,10 +2543,6 @@ function Get-HtmlUI {
             evaluateSourceArchiveVerification();
         }
 
-        function resetCertifiedPreparedSourcePath() {
-            certifiedPreparedSourcePath = '';
-        }
-
         function resetSourceArchiveState() {
             const archiveValue = document.getElementById('sourceArchivePath').value.trim();
             if (!archiveValue) {
@@ -2551,7 +2565,6 @@ function Get-HtmlUI {
 
         function resetPreparedSourcePath() {
             document.getElementById('sourcePath').value = '';
-            resetCertifiedPreparedSourcePath();
         }
 
         function applyUploadedArchiveState(data) {
@@ -2578,7 +2591,6 @@ function Get-HtmlUI {
                 document.getElementById('sourceExtractRoot').value = data.ExtractionRoot;
             }
             if (data.SourcePath) {
-                resetCertifiedPreparedSourcePath();
                 sourcePathInput.value = data.SourcePath;
             }
             if (data.Sha256) {
@@ -2655,59 +2667,6 @@ function Get-HtmlUI {
             }
 
             return sourcePathValue;
-        }
-
-        function closeCertificationPrompt(result) {
-            const modal = document.getElementById('certificationModal');
-            modal.classList.remove('show');
-
-            if (pendingCertificationResolve) {
-                const resolve = pendingCertificationResolve;
-                pendingCertificationResolve = null;
-                resolve(result);
-            }
-        }
-
-        function requestSourceCertification(sourcePath) {
-            const normalizedPath = (sourcePath || '').trim();
-            if (!normalizedPath) {
-                return Promise.reject(new Error('Prepared source path is missing.'));
-            }
-
-            if (certifiedPreparedSourcePath === normalizedPath) {
-                return Promise.resolve();
-            }
-
-            const modal = document.getElementById('certificationModal');
-            const sourcePathDisplay = document.getElementById('certificationSourcePath');
-            sourcePathDisplay.textContent = normalizedPath;
-            modal.classList.add('show');
-
-            return new Promise((resolve, reject) => {
-                pendingCertificationResolve = (confirmed) => {
-                    if (confirmed) {
-                        certifiedPreparedSourcePath = normalizedPath;
-                        showAlert('Enterprise SSL notice acknowledged.', 'success');
-                        resolve();
-                    } else {
-                        reject(new Error('Venv setup cancelled before pip install.'));
-                    }
-                };
-            });
-        }
-
-        function initializeCertificationPrompt() {
-            const confirmBtn = document.getElementById('confirmCertificationBtn');
-            const cancelBtn = document.getElementById('cancelCertificationBtn');
-            const modal = document.getElementById('certificationModal');
-
-            confirmBtn.addEventListener('click', () => closeCertificationPrompt(true));
-            cancelBtn.addEventListener('click', () => closeCertificationPrompt(false));
-            modal.addEventListener('click', (event) => {
-                if (event.target === modal) {
-                    closeCertificationPrompt(false);
-                }
-            });
         }
 
         function openSourceArchivePicker() {
@@ -2866,7 +2825,6 @@ function Get-HtmlUI {
             }
 
             sourcePath = await ensurePreparedSourcePath();
-            await requestSourceCertification(sourcePath);
 
             const response = await fetch('/api/setup-venv', {
                 method: 'POST',
@@ -3155,6 +3113,23 @@ function Get-HtmlUI {
                     '<div class="prereq-value">' + gitMsg + gitHelpLink + '</div>' +
                     '</div>';
 
+                // Enterprise SSL / pip certificates
+                const enterpriseSsl = data.EnterpriseSsl || {};
+                const enterpriseStatus = enterpriseSsl.Installed ? 'ready' : 'warning';
+                const enterpriseIcon = enterpriseSsl.Installed ? 'ready' : 'warning';
+                const enterpriseMsg = enterpriseSsl.Installed ? 'pip-system-certs installed' : 'Recommended for enterprise workstations';
+                const enterpriseDetail = enterpriseSsl.Message ||
+                    'On enterprise workstations with TLS inspection or managed certificate stores, pip may fail with SSL certificate errors unless Python trusts the corporate root certificates.';
+                const enterpriseCommand = enterpriseSsl.InstallCommand || 'python -m pip install pip-system-certs';
+                html += '<div class="prereq-item ' + enterpriseStatus + '">' +
+                    '<div class="prereq-label"><span class="status-icon ' + enterpriseIcon + '"></span><span>Enterprise SSL / pip certificates</span></div>' +
+                    '<div class="prereq-value">' +
+                    '<div>' + escapeHtml(enterpriseMsg) + '</div>' +
+                    '<div class="prereq-detail">' + escapeHtml(enterpriseDetail) + '</div>' +
+                    '<div class="prereq-command">' + escapeHtml(enterpriseCommand) + '</div>' +
+                    '</div>' +
+                    '</div>';
+
                 const checks = [
                     data.VisualStudio.Installed,
                     data.MSVCToolchains.AllPresent,
@@ -3184,7 +3159,6 @@ function Get-HtmlUI {
         // Auto-detect on load
         setInlineBuildStatus('idle', 'Ready to start. Build output opens in a separate terminal window.');
         resetSourceArchiveState();
-        initializeCertificationPrompt();
         checkPrerequisites();
         detectPaths();
     </script>
