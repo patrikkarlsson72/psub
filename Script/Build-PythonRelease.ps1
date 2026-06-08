@@ -297,6 +297,8 @@ function Import-VisualStudioEnvironment {
     Write-Info "Visual Studio path         : $($Install.Path)"
     Write-Info "Visual Studio vcvars path  : $($Install.VcVars)"
 
+    # Import vcvars64.bat into this PowerShell process so MSBuild, cl.exe, SDK paths, and
+    # related Visual Studio variables are available to all later CPython build steps.
     $cmdArgs = @(
         '/c',
         "`"$($Install.VcVars)`" >nul && set"
@@ -391,6 +393,7 @@ Import-VisualStudioEnvironment -Install $visualStudioInstall
 
 $resolvedWinSdkVersion = Resolve-WindowsSdkVersion -RequestedVersion $WinSdkVersion
 if ($resolvedWinSdkVersion -ne $WinSdkVersion) {
+    # Keep the legacy minimum as a valid default, but fall forward on newer Windows 11/VS setups.
     Write-Info "Requested Windows SDK '$WinSdkVersion' not found. Using '$resolvedWinSdkVersion' instead."
     $WinSdkVersion = $resolvedWinSdkVersion
 }
@@ -456,6 +459,8 @@ Write-Log -Level "META" -Message (($fingerprint | ConvertTo-Json -Compress))
 
 # --- Validate venv tools ----------------------------------------------------
 
+# The documentation venv is prepared by the UI/operator before the release build starts.
+# Failing early here gives a clearer error than a later Sphinx or MSI packaging failure.
 Write-Info "Validating documentation venv tools..."
 $VenvScriptsPath = Join-Path $VenvPath "Scripts"
 $VenvPythonPath = Join-Path $VenvScriptsPath "python.exe"
@@ -819,6 +824,8 @@ function Initialize-DocBuildCompatibility {
         # Continue to compatibility install below.
     }
 
+    # Older Sphinx versions rely on pkg_resources, which newer setuptools releases no longer
+    # provide in the same way. Pinning below setuptools 81 keeps CPython 3.10 docs buildable.
     Write-Info "pkg_resources is missing in the doc venv. Installing a setuptools version compatible with older Sphinx..."
     $proc = Start-Process -FilePath $PipExecutable -ArgumentList @("install", "setuptools<81") -NoNewWindow -Wait -PassThru
     if ($proc.ExitCode -ne 0) {
@@ -854,6 +861,8 @@ function New-BuildReleaseDocumentation {
         throw $errorMsg
     }
 
+    # Python 3.11+ installer packaging consumes HTML docs, while Python 3.10 still expects
+    # compiled HTML Help. Choose the output format from Include\patchlevel.h.
     if ($versionInfo.PreferHtmlDocs) {
         $docOutputPath = Join-Path $docPath "build\html\index.html"
         if (Test-Path $docOutputPath) {
@@ -999,6 +1008,8 @@ New-BuildReleaseDocumentation -SourceRoot $SourcePath -VenvRoot $VenvPath -PipEx
 Write-Step "Step 4/4: Building Windows installer..."
 $msiBuildResult = Invoke-Cmd -Command "$MsiToolsPath\buildrelease.bat" -Arguments @("-x64", "--skip-doc") -WorkingDirectory $SourcePath
 $msiBuildOutput = "$($msiBuildResult.Output)`n$($msiBuildResult.ErrorOutput)"
+# buildrelease.bat can return success even after printing MSBuild failure lines, so scan
+# its output before accepting the installer step as successful.
 if ($msiBuildOutput -match '(?im)^\s*Build FAILED\.' -or $msiBuildOutput -match '(?im):\s*error\s+[A-Z]{3}\d{4}\s*:') {
     $errorMsg = "MSI build reported failure output even though buildrelease.bat returned success. Check log output from Step 4 for details."
     Write-Err $errorMsg

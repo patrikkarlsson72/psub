@@ -23,6 +23,8 @@ $script:ServerListener = $null
 $script:BuildStatus = @{}  # Track build status by ID
 $script:BuildStatusTtlHours = 24
 
+# --- Console output helpers -------------------------------------------------
+
 function Write-Info($msg) {
     Write-Host "[INFO] $msg" -ForegroundColor Cyan
 }
@@ -30,6 +32,8 @@ function Write-Info($msg) {
 function Write-Ok($msg) {
     Write-Host "[OK] $msg" -ForegroundColor Green
 }
+
+# --- Local web server helpers ----------------------------------------------
 
 function Test-LocalhostPortAvailable {
     param([int]$Port)
@@ -163,6 +167,8 @@ function Get-RequestBody {
     $reader.Close()
     return $body
 }
+
+# --- Visual Studio and path helpers -----------------------------------------
 
 function Get-VsWherePath {
     $candidates = @(
@@ -346,6 +352,8 @@ function Test-CPythonSourceDirectory {
     }
 }
 
+# --- Dialog helpers ---------------------------------------------------------
+
 function Invoke-DialogHelper {
     param(
         [ValidateSet("file", "folder")]
@@ -498,6 +506,8 @@ function Show-ArchiveFileDialog {
         -Filter "CPython Archives (*.tar.xz;*.tar.gz;*.tgz;*.zip)|*.tar.xz;*.tar.gz;*.tgz;*.zip|All Files (*.*)|*.*" `
         -Title "Select the downloaded CPython source archive"
 }
+
+# --- Source archive upload, SHA256 verification, and extraction -------------
 
 function Test-SourceArchivePath {
     param([string]$ArchivePath)
@@ -891,6 +901,8 @@ function Invoke-PrepareSourceArchiveHandler {
     }
 }
 
+# --- Bootstrap Python discovery --------------------------------------------
+
 function Resolve-PythonCandidate {
     param(
         [string]$Path,
@@ -1070,6 +1082,8 @@ function Test-BootstrapPythonInput {
         Candidate = $candidate
     }
 }
+
+# --- Prerequisite detection -------------------------------------------------
 
 function Test-VisualStudio {
     $installs = Get-VisualStudioInstallations
@@ -1377,6 +1391,8 @@ function Invoke-PrerequisitesHandler {
     Send-JsonResponse -Context $Context -Data $result
 }
 
+# --- Documentation rendering ------------------------------------------------
+
 function Invoke-DocumentationHandler {
     param(
         [System.Net.HttpListenerContext]$Context,
@@ -1517,6 +1533,8 @@ function Invoke-DocumentationHandler {
     }
 }
 
+# --- Venv setup endpoint ----------------------------------------------------
+
 function Invoke-SetupVenvHandler {
     param([System.Net.HttpListenerContext]$Context)
     
@@ -1629,6 +1647,8 @@ function Invoke-SetupVenvHandler {
         } -StatusCode 500
     }
 }
+
+# --- Build launch endpoint --------------------------------------------------
 
 function Invoke-BuildHandler {
     param([System.Net.HttpListenerContext]$Context)
@@ -1786,6 +1806,8 @@ pause >nul
     }
 }
 
+# --- Build status and log endpoints ----------------------------------------
+
 function Invoke-BuildStatusHandler {
     param(
         [System.Net.HttpListenerContext]$Context,
@@ -1867,6 +1889,8 @@ function Invoke-BuildLogHandler {
         Send-TextResponse -Context $Context -Text "Failed to read log: $($_.Exception.Message)" -ContentType "text/plain" -StatusCode 500
     }
 }
+
+# --- Embedded web UI --------------------------------------------------------
 
 function Get-HtmlUI {
     return @"
