@@ -40,6 +40,15 @@ desktop.ini
 .idea/
 *.code-workspace
 
+# Landing page tooling
+node_modules/
+.next/
+.vinext/
+.wrangler/
+.sites-dev.*.log
+!build/
+!build/sites-vite-plugin.ts
+
 # Local source archives
 Python-*.tar.xz
 Python-*.tar.gz
