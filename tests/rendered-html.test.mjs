@@ -24,5 +24,8 @@ test("server-renders the finished PSUB landing page", async () => {
   assert.match(html, /Built with proof\./i);
   assert.match(html, /Python 3\.10–3\.12 security releases/i);
   assert.match(html, /og\.png/i);
+  assert.match(html, /https:\/\/www\.patrikkarlsson\.dev\/contact/i);
+  assert.match(html, /https:\/\/github\.com\/patrikkarlsson72\/psub/i);
+  assert.match(html, /Start a conversation/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });

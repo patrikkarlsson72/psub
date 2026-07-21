@@ -101,7 +101,9 @@ export default function Home() {
           <a href="#proof">Evidence</a>
           <a href="#start">Quick start</a>
         </nav>
-        <a className="header-cta" href="#start">Build securely <span>↗</span></a>
+        <a className="header-cta" href="https://www.patrikkarlsson.dev/contact" aria-label="Contact Patrik Karlsson">
+          Let&apos;s talk <span>↗</span>
+        </a>
       </header>
 
       <section className="hero" id="top">
@@ -112,8 +114,8 @@ export default function Home() {
             PSUB turns complex CPython security builds into a controlled, repeatable Windows workflow—from source inspection to verifiable release evidence.
           </p>
           <div className="hero-actions">
-            <a className="button button-primary" href="#pipeline"><span>Explore the pipeline</span><b>↓</b></a>
-            <a className="button button-ghost" href="#start">Open quick start</a>
+            <a className="button button-primary" href="https://www.patrikkarlsson.dev/contact"><span>Start a conversation</span><b>↗</b></a>
+            <a className="button button-ghost" href="https://github.com/patrikkarlsson72/psub" target="_blank" rel="noreferrer"><span>View on GitHub</span><b>↗</b></a>
           </div>
         </div>
 
@@ -246,15 +248,19 @@ export default function Home() {
 
       <section className="final-cta" data-reveal>
         <div className="cta-glow" />
-        <p className="section-kicker">/ SHIP THE PATCH. KEEP THE PROOF.</p>
-        <h2>Build the release<br />you can stand behind.</h2>
-        <a className="button button-primary" href="#start"><span>Open the quick start</span><b>↑</b></a>
+        <p className="section-kicker">/ READY TO BUILD WITH CONFIDENCE?</p>
+        <h2>Let&apos;s secure your<br />next release.</h2>
+        <p className="cta-lede">Have a question about PSUB, Python release engineering, or how the workflow fits your environment? Let&apos;s talk.</p>
+        <div className="cta-actions">
+          <a className="button button-primary" href="https://www.patrikkarlsson.dev/contact"><span>Contact Patrik</span><b>↗</b></a>
+          <a className="button button-ghost" href="https://github.com/patrikkarlsson72/psub" target="_blank" rel="noreferrer"><span>Explore the repository</span><b>↗</b></a>
+        </div>
       </section>
 
       <footer>
         <a className="footer-brand" href="#top"><img src="/psub-logo.png" alt="PSUB" width="1621" height="861" /></a>
         <p>Python Security Update Builder<br />Windows release engineering, systematized.</p>
-        <div><a href="#pipeline">Pipeline</a><a href="#proof">Evidence</a><a href="#start">Quick start</a></div>
+        <div><a href="https://www.patrikkarlsson.dev/contact">Contact</a><a href="https://github.com/patrikkarlsson72/psub" target="_blank" rel="noreferrer">GitHub</a><a href="#pipeline">Pipeline</a><a href="#proof">Evidence</a></div>
         <span>PSUB / OPEN TOOLING</span>
       </footer>
     </main>
